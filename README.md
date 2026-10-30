@@ -21,43 +21,44 @@ Sistem interaktif **TikTok Live ke Roblox** lengkap dengan **Web Controller Dash
    - 5 lumba-lumba melompat secara melingkar dari permukaan air dengan efek cipratan air.
 6. **🥔 Gift Potato (Kentang) — Giant Tsunami Wave Event (15 Detik):**
    - Gelombang Tsunami raksasa muncul (`Transparency 1 → 0` dalam 2 detik), menerjang dari `(59.32, 34.43, -689.134)` menuju `(59.32, 74.414, 77.776)` selama 15 detik, dan memudar (`0 → 1` di detik 12–15).
-6. **🎥 3-Scene Broadcast Camera Director (Bebas Glitch):**
+7. **🎲 Auto Random Gift Loop (Slider 1s – 30s):**
+   - Secara otomatis memberikan efek gift acak ke avatar aktif dengan interval yang bisa diatur *real-time* lewat slider **1 detik hingga 30 detik** (default `7s`):
+     - **🐼 Panda Gigantic (30s Giant + 10s POV):** peluang **15%**
+     - **🌹 Rose VIP**, **🎩 3 Dragons**, dan **🐬 5 Leaping Dolphins:** membagi rata **85%** sisanya (~28.3% masing-masing).
+8. **🎥 3-Scene Broadcast Camera Director (Bebas Glitch):**
    - **Scene 1 (Drone View - 10s):** Kamera udara memutari seluruh arena.
    - **Scene 2 (Paparazzi Cam - 9s):** Bidikan lensa *telephoto handheld* realistis ke 1 karakter acak dari koridor depan yang bebas halangan.
    - **Scene 3 (Pull-In Runway Shot - 8s):** Pergerakan kamera sinematik dari `(50, 63.403, -10.701)` menuju `(50, 63.403, -69.701)`.
    - Dilengkapi *Broadcast Camera Cut* antar-scene dan filter posisi *world-space* sehingga kamera tidak pernah berputar liar atau menembus tembok.
-7. **💃 Live Dance & Catalog Emote Controller:**
-   - Paste ID Animasi atau ID Catalog Emote Roblox apa saja di `http://localhost:3000` untuk langsung mengganti goyangan seluruh avatar secara *real-time* (dilengkapi *Auto Emote Asset Resolver*).
+9. **💃 Live Dance & Catalog Emote Controller (Tersimpan Permanen):**
+   - Paste ID Animasi atau ID Catalog Emote Roblox apa saja di `http://localhost:3000` untuk langsung mengganti goyangan seluruh avatar secara *real-time* (dilengkapi *Auto Emote Asset Resolver*). Semua pengaturan tersimpan di `bridge-server/data/dance_config.json` dan otomatis disinkronkan saat game Roblox terhubung.
 
 ---
 
-## 🚀 Cara Menjalankan (Mac & Windows 10)
+## 🚀 Cara Memulai Kembali (Mac & Windows 10)
 
-### 1. Menjalankan Bridge Server & Web Controller
-* **Di macOS:** Klik 2x file [`START_MAC.command`](./START_MAC.command)
-* **Di Windows 10:** Klik 2x file [`START_WINDOWS.bat`](./START_WINDOWS.bat)
-* Atau melalui terminal:
-  ```bash
-  cd bridge-server
-  npm install
-  npm start
-  ```
-* Browser akan otomatis membuka **http://localhost:3000**.
+### Di macOS
+1. Klik 2x file [`START_MAC.command`](./START_MAC.command) *(atau jalankan `./START_MAC.command` di Terminal)*.
+2. Script otomatis menutup proses lama di port `3000`, menyalakan server lokal, menghidupkan **Public Tunnel otomatis**, dan membuka **http://localhost:3000**.
+
+### Di Windows 10 / 11
+1. Tarik update terbaru (`git pull`) atau salin folder project terbaru ke PC Windows Anda.
+2. Klik 2x file [`START_WINDOWS.bat`](./START_WINDOWS.bat).
+3. Script otomatis membersihkan port `3000` jika ada proses lama, meng-install dependency jika belum ada, menyalakan **Public Tunnel otomatis**, dan membuka **http://localhost:3000**.
 
 ---
 
 ## 🎮 Cara Main di Roblox Player Biasa (Tanpa Buka Roblox Studio)
 
-Jika Anda ingin menjalankan acara di **Roblox Player biasa** (misal menggunakan **Bloxstrap** atau **Roblox Microsoft Store** di PC Windows 10 agar hemat RAM dan lancar):
+1. Jalankan [`START_MAC.command`](./START_MAC.command) (Mac) atau [`START_WINDOWS.bat`](./START_WINDOWS.bat) (Windows).
+2. Tunggu 2–3 detik hingga di terminal/log muncul pesan:
+   `🌐 [PUBLIC TUNNELS ACTIVE] Listening on: https://fast-days-sin.loca.lt, ...`
+3. Langsung buka game Anda di **Roblox Player biasa** (atau **Bloxstrap**).
+4. Lihat pojok kanan atas di **http://localhost:3000** — badge akan otomatis berubah menjadi hijau:
+   **`🎮 Connected: Roblox Player (Cloud)`**
+5. Sekarang semua tombol simulator, slider interval (1s–30s), kamera, dan dance di **http://localhost:3000** akan langsung mengendalikan game Anda secara *real-time*!
 
-1. Buka Web Controller di **http://localhost:3000**.
-2. Pada bagian **🌐 Connect to Regular Roblox Player (Public Cloud Tunnel)**, klik tombol:
-   **`🚀 Start 1-Click Free Public Tunnel`**
-   *(Atau masukkan URL Cloudflare Tunnel / ngrok Anda lalu klik **Save URL**).*
-3. Sistem secara otomatis menyinkronkan URL publik tersebut ke `TikTokShowServer.lua` dan atribut `Workspace.PublicBridgeUrl`.
-4. Di Roblox Studio (cukup sekali saja), klik **File → Publish to Roblox** untuk menyimpan versi terbaru ke akun Roblox Anda.
-5. Tutup Roblox Studio, lalu buka game Anda lewat **Roblox Player biasa**!
-6. Semua kontrol di browser (`http://localhost:3000`) maupun dari smartphone Anda akan langsung mengendalikan game di Roblox Player secara *real-time*!
+*(Catatan: Jika suatu saat Anda ingin meng-update script di dalam Roblox Studio secara manual, cukup copy isi file [`roblox-scripts/TikTokShowServer.lua`](./roblox-scripts/TikTokShowServer.lua) ke `ServerScriptService.TikTokShowServer` dan [`roblox-scripts/TikTokShowClient.lua`](./roblox-scripts/TikTokShowClient.lua) ke `StarterPlayer.StarterPlayerScripts.TikTokShowClient`, lalu klik **File → Publish to Roblox**).*
 
 ---
 

@@ -1735,17 +1735,21 @@ task.spawn(function()
             local tiktokId = (chosenAva and chosenAva:GetAttribute("TikTokUniqueId")) or (chosenAva and chosenAva.Name) or "cool_viewer99"
             local robloxName = (chosenAva and chosenAva:GetAttribute("RobloxUsername")) or (chosenAva and chosenAva.Name) or "builderman"
 
-            -- Pool of ONLY the 3 requested gift effects:
-            --   1. "rose_gift"        (🌹 Send Rose: Effect + Dance + POV)
-            --   2. "panda_gift"       (🐼 Send Panda: Giant 30s + 10s POV)
-            --   3. "witch_hat_dragon" (🧙‍♂️ / 🎩 3 Dragons 20s Event)
-            local pool = { "rose_gift", "panda_gift" }
-            if not isDragonEventActive then
-                table.insert(pool, "witch_hat_dragon")
+            -- Weighted random selection among ONLY the 3 requested gift effects:
+            --   - "panda_gift" (🐼 Gigantic 30s + 10s POV): 15% chance
+            --   - "witch_hat_dragon" (🧙‍♂️ / 🎩 3 Dragons 20s Event): 42.5% chance (when not already active)
+            --   - "rose_gift" (🌹 Rose Effect + Dance + POV): 42.5% chance (85% if Dragons already flying)
+            local PANDA_GIGANTIC_CHANCE = 0.15
+            local roll = math.random()
+            local chosenGift
+            if roll < PANDA_GIGANTIC_CHANCE then
+                chosenGift = "panda_gift"
+            elseif (not isDragonEventActive) and (roll < PANDA_GIGANTIC_CHANCE + 0.425) then
+                chosenGift = "witch_hat_dragon"
+            else
+                chosenGift = "rose_gift"
             end
-
-            local chosenGift = pool[math.random(1, #pool)]
-            print(string.format("🎲 [AUTO 7s GIFT] Randomly applying '%s' to avatar '%s' (@%s)", chosenGift, tostring(robloxName), tostring(tiktokId)))
+            print(string.format("🎲 [AUTO 7s GIFT] (roll=%.2f) Applying '%s' to avatar '%s' (@%s)", roll, chosenGift, tostring(robloxName), tostring(tiktokId)))
 
             if chosenGift == "rose_gift" then
                 task.spawn(function()

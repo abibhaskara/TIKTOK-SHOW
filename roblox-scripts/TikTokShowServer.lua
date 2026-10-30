@@ -1704,8 +1704,9 @@ end
 -- Auto Random Gift Effect Loop (Every 7 Seconds)
 -- Only chooses randomly from:
 --   1. 🌹 Send Rose (Effect + Dance + POV)
---   2. 🐼 Send Panda (Giant 30s + 10s POV)
+--   2. 🐼 Send Panda (Giant 30s + 10s POV) -- 15% chance
 --   3. 🧙‍♂️ / 🎩 Send Topi Penyihir / Hat and Mustache (3 Dragons 20s Event)
+--   4. 🐬 Send Finger Heart (5 Leaping Dolphins 15s Event)
 -- ============================================================================
 local AUTO_RANDOM_GIFT_INTERVAL = 7.0
 local autoRandomGiftEnabled = true
@@ -1735,19 +1736,26 @@ task.spawn(function()
             local tiktokId = (chosenAva and chosenAva:GetAttribute("TikTokUniqueId")) or (chosenAva and chosenAva.Name) or "cool_viewer99"
             local robloxName = (chosenAva and chosenAva:GetAttribute("RobloxUsername")) or (chosenAva and chosenAva.Name) or "builderman"
 
-            -- Weighted random selection among ONLY the 3 requested gift effects:
+            -- Weighted random selection among the 4 requested gift effects:
             --   - "panda_gift" (🐼 Gigantic 30s + 10s POV): 15% chance
-            --   - "witch_hat_dragon" (🧙‍♂️ / 🎩 3 Dragons 20s Event): 42.5% chance (when not already active)
-            --   - "rose_gift" (🌹 Rose Effect + Dance + POV): 42.5% chance (85% if Dragons already flying)
+            --   - Remaining 85% split equally among:
+            --     * "rose_gift" (🌹 Rose Effect + Dance + POV)
+            --     * "witch_hat_dragon" (🧙‍♂️ / 🎩 3 Dragons 20s Event)
+            --     * "finger_heart_dolphin" (🐬 5 Leaping Dolphins 15s Event)
             local PANDA_GIGANTIC_CHANCE = 0.15
             local roll = math.random()
             local chosenGift
             if roll < PANDA_GIGANTIC_CHANCE then
                 chosenGift = "panda_gift"
-            elseif (not isDragonEventActive) and (roll < PANDA_GIGANTIC_CHANCE + 0.425) then
-                chosenGift = "witch_hat_dragon"
             else
-                chosenGift = "rose_gift"
+                local otherPool = { "rose_gift" }
+                if not isDragonEventActive then
+                    table.insert(otherPool, "witch_hat_dragon")
+                end
+                if not isDolphinEventActive then
+                    table.insert(otherPool, "finger_heart_dolphin")
+                end
+                chosenGift = otherPool[math.random(1, #otherPool)]
             end
             print(string.format("🎲 [AUTO 7s GIFT] (roll=%.2f) Applying '%s' to avatar '%s' (@%s)", roll, chosenGift, tostring(robloxName), tostring(tiktokId)))
 
@@ -1787,6 +1795,23 @@ task.spawn(function()
                     alertType = "witch_hat_dragon",
                     tiktokUniqueId = tiktokId,
                     giftName = "Hat and Mustache"
+                })
+            elseif chosenGift == "finger_heart_dolphin" then
+                if chosenAva then
+                    applyRoseGiftEffects(chosenAva, 5.0)
+                    playAvatarAnimation(chosenAva, VIP_ROSE_DANCE_ANIMS)
+                end
+                task.spawn(function()
+                    triggerFingerHeartDolphins({
+                        tiktokUniqueId = tiktokId,
+                        robloxUsername = robloxName,
+                        giftName = "Finger Heart"
+                    })
+                end)
+                remoteEvent:FireAllClients("ShowBannerAlert", {
+                    alertType = "finger_heart_dolphin",
+                    tiktokUniqueId = tiktokId,
+                    giftName = "Finger Heart"
                 })
             end
         end

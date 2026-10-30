@@ -154,9 +154,14 @@ function saveUserMapping(tiktokUniqueId, tiktokNickname, robloxProfile) {
 }
 
 // ============================================================================
-// Event Queue for Roblox Studio (Polled via GET /api/events)
+// Event Queue for Roblox Studio & Roblox Player (Polled via GET /api/events)
 // ============================================================================
 const robloxEventQueue = [];
+let currentEventSeq = 0;
+let lastStudioPollAt = 0;
+let lastCloudPollAt = 0;
+let lastForcedDanceId = null;
+let lastForcedDanceSeq = 0;
 const recentLogs = [];
 
 function addLog(type, message, meta = {}) {
@@ -173,13 +178,15 @@ function addLog(type, message, meta = {}) {
 }
 
 function enqueueRobloxEvent(eventPayload) {
+  currentEventSeq += 1;
   robloxEventQueue.push({
+    seq: currentEventSeq,
     id: Date.now() + "-" + Math.random().toString(36).slice(2, 7),
     timestamp: Date.now(),
     ...eventPayload
   });
-  // Cap queue size in case Roblox Studio isn't running yet
-  if (robloxEventQueue.length > 100) {
+  // Keep recent 120 events in ring buffer so multiple consumers (Studio + Cloud Player) never steal each other's events
+  while (robloxEventQueue.length > 120) {
     robloxEventQueue.shift();
   }
 }
@@ -602,12 +609,95 @@ async function connectToTikTok(target) {
 // HTTP API Endpoints for Roblox Studio & Local Test Dashboard
 // ============================================================================
 
-// 1. Roblox Studio polls this endpoint every 0.5 seconds
+// 1. Roblox Studio & Cloud Roblox Player poll this endpoint every 0.15s
+// Supports ?since=<seq> so Studio and Roblox Player never steal events from each other,
+// AND automatically injects current settings when a Roblox server first connects!
+let hasSentInitialCloudSync = false;
+let hasSentInitialStudioSync = false;
+
+function buildInitialSyncEvents() {
+  return [
+    {
+      seq: ++currentEventSeq,
+      id: "init-gift-" + Date.now(),
+      timestamp: Date.now(),
+      type: "set_auto_random_gift",
+      enabled: autoRandomGiftEnabled,
+      intervalSeconds: autoRandomGiftInterval
+    },
+    {
+      seq: ++currentEventSeq,
+      id: "init-cam-" + Date.now(),
+      timestamp: Date.now(),
+      type: "set_camera_scene",
+      scene: activeCameraScene
+    },
+    {
+      seq: ++currentEventSeq,
+      id: "init-dance-" + Date.now(),
+      timestamp: Date.now(),
+      type: "update_dance_config",
+      avatarScale: danceConfig.avatarScale,
+      stageDances: danceConfig.stageDances,
+      crowdDances: danceConfig.crowdDances,
+      vipDances: danceConfig.vipDances,
+      forceDanceId: lastForcedDanceId || (danceConfig.crowdDances && danceConfig.crowdDances[0]) || null
+    }
+  ];
+}
+
 app.get("/api/events", (req, res) => {
-  const events = robloxEventQueue.splice(0, 15); // Drain up to 15 events per poll
+  const now = Date.now();
+  const hostHeader = String(req.headers.host || "").toLowerCase();
+  const isLocal = hostHeader.includes("localhost") || hostHeader.includes("127.0.0.1");
+
+  let isNewConnection = false;
+  if (isLocal) {
+    if (now - lastStudioPollAt > 5000 || !hasSentInitialStudioSync) {
+      isNewConnection = true;
+      hasSentInitialStudioSync = true;
+    }
+    lastStudioPollAt = now;
+  } else {
+    if (now - lastCloudPollAt > 5000 || !hasSentInitialCloudSync) {
+      isNewConnection = true;
+      hasSentInitialCloudSync = true;
+      addLog("success", `🎮 [ROBLOX PLAYER CONNECTED] Cloud server connected via ${hostHeader}! Syncing live settings...`);
+    }
+    lastCloudPollAt = now;
+  }
+
+  let events = [];
+  if (req.query.since !== undefined) {
+    const sinceSeq = Number(req.query.since);
+    if (isNaN(sinceSeq) || sinceSeq < 0) {
+      events = buildInitialSyncEvents();
+    } else {
+      events = robloxEventQueue.filter((e) => e.seq > sinceSeq).slice(0, 20);
+    }
+  } else {
+    // Legacy caller (already-published Roblox game without ?since=)
+    events = robloxEventQueue.splice(0, 15);
+    if (isNewConnection) {
+      events = [...buildInitialSyncEvents(), ...events];
+    }
+  }
+
   res.json({
     ok: true,
-    events
+    nextSeq: currentEventSeq,
+    events,
+    state: {
+      cameraScene: activeCameraScene,
+      autoRandomGiftEnabled,
+      autoRandomGiftInterval,
+      avatarScale: danceConfig.avatarScale,
+      stageDances: danceConfig.stageDances,
+      crowdDances: danceConfig.crowdDances,
+      vipDances: danceConfig.vipDances,
+      forceDanceId: lastForcedDanceId,
+      forceDanceSeq: lastForcedDanceSeq
+    }
   });
 });
 
@@ -617,6 +707,7 @@ app.get("/api/sync_scripts", (req, res) => {
 
 // 2. Status endpoint for Dashboard
 app.get("/api/status", (req, res) => {
+  const now = Date.now();
   res.json({
     ok: true,
     connectionState,
@@ -624,6 +715,8 @@ app.get("/api/status", (req, res) => {
     totalVerifiedFollowers: followerSet.size,
     totalMappedUsers: Object.keys(userMappings).length,
     queueLength: robloxEventQueue.length,
+    studioConnected: now - lastStudioPollAt < 4000,
+    cloudConnected: now - lastCloudPollAt < 4000,
     recentLogs,
     danceConfig
   });
@@ -657,8 +750,12 @@ app.post("/api/dance_config", (req, res) => {
   let normalizedForceId = null;
   if (forceDanceId) {
     normalizedForceId = normalizeAnimationId(forceDanceId);
-    if (normalizedForceId && crowdDances === undefined) {
-      danceConfig.crowdDances = [normalizedForceId];
+    if (normalizedForceId) {
+      lastForcedDanceId = normalizedForceId;
+      lastForcedDanceSeq += 1;
+      if (crowdDances === undefined) {
+        danceConfig.crowdDances = [normalizedForceId];
+      }
     }
   }
 
@@ -687,10 +784,10 @@ app.post("/api/dance_config", (req, res) => {
   });
 });
 
-// 2c. Camera Scene Switcher Endpoint (Auto-Cycle, Drone, Paparazzi, Pull-In)
-let activeCameraScene = "auto";
-let autoRandomGiftEnabled = true;
-let autoRandomGiftInterval = 7;
+// 2c. Camera Scene Switcher & Auto Gift Endpoint (Persisted in dance_config.json)
+let activeCameraScene = danceConfig.cameraScene || "auto";
+let autoRandomGiftEnabled = danceConfig.autoRandomGiftEnabled !== undefined ? Boolean(danceConfig.autoRandomGiftEnabled) : true;
+let autoRandomGiftInterval = danceConfig.autoRandomGiftInterval || 7;
 
 app.get("/api/auto_random_gift", (req, res) => {
   res.json({ ok: true, enabled: autoRandomGiftEnabled, intervalSeconds: autoRandomGiftInterval });
@@ -704,6 +801,10 @@ app.post("/api/auto_random_gift", (req, res) => {
   if (intervalSeconds !== undefined && !isNaN(Number(intervalSeconds))) {
     autoRandomGiftInterval = Math.max(1, Math.min(30, Math.round(Number(intervalSeconds))));
   }
+  danceConfig.autoRandomGiftEnabled = autoRandomGiftEnabled;
+  danceConfig.autoRandomGiftInterval = autoRandomGiftInterval;
+  saveJson(DANCE_CONFIG_FILE, danceConfig);
+
   enqueueRobloxEvent({
     type: "set_auto_random_gift",
     enabled: autoRandomGiftEnabled,
@@ -723,6 +824,8 @@ app.get("/api/camera_scene", (req, res) => {
 app.post("/api/camera_scene", (req, res) => {
   const { scene } = req.body || {};
   activeCameraScene = scene || "auto";
+  danceConfig.cameraScene = activeCameraScene;
+  saveJson(DANCE_CONFIG_FILE, danceConfig);
   enqueueRobloxEvent({
     type: "set_camera_scene",
     scene: activeCameraScene
@@ -732,8 +835,15 @@ app.post("/api/camera_scene", (req, res) => {
 });
 
 // 2d. Public Tunnel Endpoint for Playing in Regular Roblox Player (Cloud Server -> Local Bridge)
-let activeTunnelInstance = null;
-let publicTunnelUrl = process.env.PUBLIC_TUNNEL_URL || "";
+// Automatically maintains persistent tunnels for all known published subdomains so you NEVER have to re-publish!
+const TUNNEL_SUBDOMAINS = [
+  "fast-days-sin",
+  "spicy-windows-do",
+  "fuzzy-ducks-fly",
+  "tiktok-show-bridge-796910"
+];
+const activeTunnels = new Map();
+let publicTunnelUrl = process.env.PUBLIC_TUNNEL_URL || "https://fast-days-sin.loca.lt";
 
 function syncPublicBridgeUrlToLua(eventsUrl) {
   try {
@@ -759,47 +869,70 @@ function syncPublicBridgeUrlToLua(eventsUrl) {
   }
 }
 
+async function openSingleSubdomainTunnel(subdomain) {
+  const localtunnel = require("localtunnel");
+  try {
+    if (activeTunnels.has(subdomain)) {
+      try { activeTunnels.get(subdomain).close(); } catch (_) {}
+      activeTunnels.delete(subdomain);
+    }
+    const instance = await localtunnel({ port: PORT, subdomain });
+    activeTunnels.set(subdomain, instance);
+
+    instance.on("close", () => {
+      activeTunnels.delete(subdomain);
+      // Auto-reconnect after 2s so tunnel never stays dead!
+      setTimeout(() => {
+        openSingleSubdomainTunnel(subdomain).catch(() => {});
+      }, 2000);
+    });
+
+    instance.on("error", () => {
+      try { instance.close(); } catch (_) {}
+    });
+
+    return instance.url;
+  } catch (err) {
+    setTimeout(() => {
+      openSingleSubdomainTunnel(subdomain).catch(() => {});
+    }, 5000);
+    return null;
+  }
+}
+
+async function startOrEnsurePublicTunnel() {
+  try {
+    const urls = await Promise.all(TUNNEL_SUBDOMAINS.map((sub) => openSingleSubdomainTunnel(sub)));
+    const validUrls = urls.filter(Boolean);
+    if (validUrls.length > 0) {
+      publicTunnelUrl = validUrls[0];
+      const eventsUrl = `${publicTunnelUrl.replace(/\/$/, "")}/api/events`;
+      addLog("info", `🌐 [PUBLIC TUNNELS ACTIVE] Listening on: ${validUrls.join(", ")}`);
+      return { ok: true, active: true, tunnelUrl: publicTunnelUrl, allUrls: validUrls, eventsUrl };
+    }
+    return { ok: false, error: "Could not establish public tunnel" };
+  } catch (err) {
+    addLog("error", `Failed to start public tunnel: ${err.message}`);
+    return { ok: false, error: err.message };
+  }
+}
+
 app.get("/api/tunnel", (req, res) => {
   const eventsUrl = publicTunnelUrl ? `${publicTunnelUrl.replace(/\/$/, "")}/api/events` : "http://localhost:3000/api/events";
   res.json({
     ok: true,
-    active: Boolean(publicTunnelUrl),
+    active: activeTunnels.size > 0 || Boolean(publicTunnelUrl),
     tunnelUrl: publicTunnelUrl,
     eventsUrl
   });
 });
 
 app.post("/api/tunnel/start", async (req, res) => {
-  try {
-    if (activeTunnelInstance) {
-      try { activeTunnelInstance.close(); } catch (_) {}
-      activeTunnelInstance = null;
-    }
-    const localtunnel = require("localtunnel");
-    activeTunnelInstance = await localtunnel({ port: PORT });
-    publicTunnelUrl = activeTunnelInstance.url;
-    const eventsUrl = `${publicTunnelUrl.replace(/\/$/, "")}/api/events`;
-
-    activeTunnelInstance.on("close", () => {
-      addLog("warn", "🌐 Public Tunnel closed.");
-    });
-
-    syncPublicBridgeUrlToLua(eventsUrl);
-    enqueueRobloxEvent({
-      type: "update_bridge_url",
-      publicBridgeUrl: eventsUrl
-    });
-
-    addLog("info", `🌐 [PUBLIC TUNNEL READY] Roblox Player Cloud URL: ${eventsUrl}`);
-    res.json({
-      ok: true,
-      active: true,
-      tunnelUrl: publicTunnelUrl,
-      eventsUrl
-    });
-  } catch (err) {
-    addLog("error", `Failed to start public tunnel: ${err.message}`);
-    res.status(500).json({ ok: false, error: err.message });
+  const result = await startOrEnsurePublicTunnel();
+  if (result.ok) {
+    res.json(result);
+  } else {
+    res.status(500).json(result);
   }
 });
 
@@ -987,4 +1120,5 @@ app.listen(PORT, () => {
   console.log(`🧪 Open http://localhost:${PORT} in your browser to test & control!`);
   console.log("================================================================");
   connectToTikTok(currentTikTokUsername);
+  startOrEnsurePublicTunnel();
 });

@@ -153,7 +153,10 @@
 <body>
   <header>
     <h1>🎵 TikTok Live → 🎮 Roblox Show Bridge</h1>
-    <span id="statusBadge" class="badge offline">Waiting for Live Stream</span>
+    <div style="display:flex;gap:8px;align-items:center;flex-wrap:wrap;">
+      <span id="robloxConnBadge" class="badge offline">⏳ Waiting for Roblox...</span>
+      <span id="statusBadge" class="badge offline">Waiting for Live Stream</span>
+    </div>
   </header>
 
   <div class="grid">
@@ -379,6 +382,23 @@
         } else {
           badge.className = "badge offline";
           badge.textContent = data.connectionState.error || "Offline (Simulator Ready)";
+        }
+
+        const rbxBadge = document.getElementById("robloxConnBadge");
+        if (rbxBadge) {
+          if (data.studioConnected && data.cloudConnected) {
+            rbxBadge.className = "badge live";
+            rbxBadge.textContent = "🎮 Connected: Studio + Roblox Player";
+          } else if (data.cloudConnected) {
+            rbxBadge.className = "badge live";
+            rbxBadge.textContent = "🎮 Connected: Roblox Player (Cloud)";
+          } else if (data.studioConnected) {
+            rbxBadge.className = "badge live";
+            rbxBadge.textContent = "🎮 Connected: Roblox Studio";
+          } else {
+            rbxBadge.className = "badge offline";
+            rbxBadge.textContent = "⏳ Waiting for Roblox...";
+          }
         }
 
         if (!initializedInput) {

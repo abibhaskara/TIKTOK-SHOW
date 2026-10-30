@@ -831,7 +831,7 @@ end
 -- Configuration (Auto-Detects Studio Localhost vs Published Roblox Player Tunnel)
 -- ============================================================================
 local LOCAL_BRIDGE_URL = "http://localhost:3000/api/events"
-local PUBLIC_BRIDGE_URL = workspace:GetAttribute("PublicBridgeUrl") or "https://spicy-windows-do.loca.lt/api/events"
+local PUBLIC_BRIDGE_URL = workspace:GetAttribute("PublicBridgeUrl") or "https://fast-days-sin.loca.lt/api/events"
 local BRIDGE_URL = RunService:IsStudio() and LOCAL_BRIDGE_URL or PUBLIC_BRIDGE_URL
 local POLL_INTERVAL = 0.15           -- Fast 150ms polling for instant live reactions!
 local STAGE_DANCE_DURATION = 4.5     -- Seconds an avatar dances on the Main Stage before walking to crowd
@@ -1831,10 +1831,23 @@ print("================================================================")
 print("🎬 TikTok Show Server Started! Polling " .. BRIDGE_URL)
 print("================================================================")
 
+local lastEventSeq = -1
+local lastSyncedCameraScene = "auto"
+local lastSyncedForceDanceSeq = 0
+local lastSyncedStageDancesKey = ""
+local lastSyncedCrowdDancesKey = ""
+local lastSyncedVipDancesKey = ""
+
+local function appendSinceQuery(baseUrl, seq)
+    local sep = string.find(baseUrl, "?", 1, true) and "&" or "?"
+    return baseUrl .. sep .. "since=" .. tostring(seq)
+end
+
 local function fetchBridgeEvents(url)
+    local fullUrl = appendSinceQuery(url, lastEventSeq)
     local ok, res = pcall(function()
         return HttpService:RequestAsync({
-            Url = url,
+            Url = fullUrl,
             Method = "GET",
             Headers = {
                 ["Bypass-Tunnel-Reminder"] = "true",
@@ -1849,19 +1862,163 @@ local function fetchBridgeEvents(url)
     return false, nil
 end
 
+local function syncLiveStateFromController(state)
+    if type(state) ~= "table" then return end
+
+    -- 1. Sync Auto Random Gift (ON/OFF + 1s-30s Slider)
+    if state.autoRandomGiftEnabled ~= nil then
+        local newEnabled = (state.autoRandomGiftEnabled ~= false)
+        if newEnabled ~= autoRandomGiftEnabled then
+            autoRandomGiftEnabled = newEnabled
+            print("[TikTokShow] 🎲 Synced Auto Random Gift Enabled -> " .. tostring(autoRandomGiftEnabled))
+        end
+    end
+    if state.autoRandomGiftInterval and tonumber(state.autoRandomGiftInterval) then
+        local newInterval = math.clamp(tonumber(state.autoRandomGiftInterval), 1, 30)
+        if newInterval ~= autoRandomGiftInterval then
+            autoRandomGiftInterval = newInterval
+            print("[TikTokShow] ⏱️ Synced Auto Random Gift Interval -> " .. tostring(autoRandomGiftInterval) .. "s")
+        end
+    end
+
+    -- 2. Sync Camera Scene
+    if state.cameraScene and tostring(state.cameraScene) ~= lastSyncedCameraScene then
+        lastSyncedCameraScene = tostring(state.cameraScene)
+        print("[TikTokShow] 🎥 Synced Camera Scene -> " .. lastSyncedCameraScene)
+        remoteEvent:FireAllClients("SetCameraScene", { scene = lastSyncedCameraScene })
+    end
+
+    -- 3. Sync Avatar Scale
+    if state.avatarScale and tonumber(state.avatarScale) then
+        local newScale = tonumber(state.avatarScale)
+        if math.abs(newScale - currentAvatarScale) > 0.01 then
+            currentAvatarScale = newScale
+            print("[TikTokShow] 📏 Synced Avatar Scale -> " .. currentAvatarScale .. "x")
+            local spawnedFolder = workspace:FindFirstChild("SpawnedTikTokAvatars")
+            if spawnedFolder then
+                for _, char in ipairs(spawnedFolder:GetChildren()) do
+                    if char:IsA("Model") and not avatarGiantToken[char] then
+                        pcall(function()
+                            char:ScaleTo(currentAvatarScale)
+                        end)
+                    end
+                end
+            end
+        end
+    end
+
+    -- 3b. Sync Dance Playlists (Stage, Crowd, VIP) so custom settings apply immediately on startup
+    if type(state.stageDances) == "table" and #state.stageDances > 0 then
+        local key = table.concat(state.stageDances, ",")
+        if key ~= lastSyncedStageDancesKey then
+            lastSyncedStageDancesKey = key
+            task.spawn(function()
+                local resolved = {}
+                for _, id in ipairs(state.stageDances) do
+                    table.insert(resolved, resolvePlayableAnimationId(id))
+                end
+                STAGE_DANCE_ANIMS = resolved
+                print("[TikTokShow] 🎤 Synced STAGE_DANCE_ANIMS: " .. key)
+            end)
+        end
+    end
+
+    if type(state.crowdDances) == "table" and #state.crowdDances > 0 then
+        local key = table.concat(state.crowdDances, ",")
+        if key ~= lastSyncedCrowdDancesKey then
+            lastSyncedCrowdDancesKey = key
+            task.spawn(function()
+                local resolved = {}
+                for _, id in ipairs(state.crowdDances) do
+                    table.insert(resolved, resolvePlayableAnimationId(id))
+                end
+                CROWD_DANCE_ANIMS = resolved
+                print("[TikTokShow] 👥 Synced CROWD_DANCE_ANIMS: " .. key)
+                local spawnedFolder = workspace:FindFirstChild("SpawnedTikTokAvatars")
+                if spawnedFolder then
+                    for _, char in ipairs(spawnedFolder:GetChildren()) do
+                        if char:IsA("Model") and char:FindFirstChildOfClass("Humanoid") then
+                            task.spawn(function()
+                                playAvatarAnimation(char, CROWD_DANCE_ANIMS)
+                            end)
+                        end
+                    end
+                end
+            end)
+        end
+    end
+
+    if type(state.vipDances) == "table" and #state.vipDances > 0 then
+        local key = table.concat(state.vipDances, ",")
+        if key ~= lastSyncedVipDancesKey then
+            lastSyncedVipDancesKey = key
+            task.spawn(function()
+                local resolved = {}
+                for _, id in ipairs(state.vipDances) do
+                    table.insert(resolved, resolvePlayableAnimationId(id))
+                end
+                VIP_ROSE_DANCE_ANIMS = resolved
+                print("[TikTokShow] 🌹 Synced VIP_ROSE_DANCE_ANIMS: " .. key)
+            end)
+        end
+    end
+
+    -- 4. Sync Instant Forced Dance if a new forceDanceSeq arrived
+    if state.forceDanceSeq and tonumber(state.forceDanceSeq) and tonumber(state.forceDanceSeq) > lastSyncedForceDanceSeq then
+        lastSyncedForceDanceSeq = tonumber(state.forceDanceSeq)
+        if state.forceDanceId and tostring(state.forceDanceId) ~= "" then
+            local forceId = tostring(state.forceDanceId)
+            task.spawn(function()
+                local playableForceId = resolvePlayableAnimationId(forceId)
+                CROWD_DANCE_ANIMS = { playableForceId }
+                local spawnedFolder = workspace:FindFirstChild("SpawnedTikTokAvatars")
+                if spawnedFolder then
+                    for _, char in ipairs(spawnedFolder:GetChildren()) do
+                        if char:IsA("Model") and char:FindFirstChildOfClass("Humanoid") then
+                            task.spawn(function()
+                                playAvatarAnimation(char, playableForceId)
+                            end)
+                        end
+                    end
+                end
+            end)
+        end
+    end
+end
+
 task.spawn(function()
+    local FALLBACK_TUNNEL_URLS = {
+        "https://fast-days-sin.loca.lt/api/events",
+        "https://spicy-windows-do.loca.lt/api/events",
+        "https://fuzzy-ducks-fly.loca.lt/api/events",
+        "https://tiktok-show-bridge-796910.loca.lt/api/events"
+    }
     while true do
-        local activeUrl = BRIDGE_URL
-        local customPublicUrl = workspace:GetAttribute("PublicBridgeUrl")
-        if not RunService:IsStudio() and customPublicUrl and customPublicUrl ~= "" then
-            activeUrl = customPublicUrl
+        local candidateUrls = {}
+        local seen = {}
+        local function addCandidate(u)
+            if u and u ~= "" and not seen[u] then
+                seen[u] = true
+                table.insert(candidateUrls, u)
+            end
         end
 
-        local ok, responseBody = fetchBridgeEvents(activeUrl)
+        local customPublicUrl = workspace:GetAttribute("PublicBridgeUrl")
+        if RunService:IsStudio() then
+            addCandidate(LOCAL_BRIDGE_URL)
+        end
+        addCandidate(customPublicUrl)
+        addCandidate(PUBLIC_BRIDGE_URL)
+        for _, u in ipairs(FALLBACK_TUNNEL_URLS) do
+            addCandidate(u)
+        end
 
-        -- Fallback to PublicBridgeUrl if localhost isn't reachable
-        if (not ok) and customPublicUrl and customPublicUrl ~= "" and customPublicUrl ~= activeUrl then
-            ok, responseBody = fetchBridgeEvents(customPublicUrl)
+        local ok, responseBody = false, nil
+        for _, url in ipairs(candidateUrls) do
+            ok, responseBody = fetchBridgeEvents(url)
+            if ok and responseBody then
+                break
+            end
         end
 
         if ok and responseBody then
@@ -1869,8 +2026,18 @@ task.spawn(function()
                 return HttpService:JSONDecode(responseBody)
             end)
 
-            if decodeOk and payload and payload.ok and type(payload.events) == "table" then
-                for _, event in ipairs(payload.events) do
+            if decodeOk and payload and payload.ok then
+                if payload.nextSeq and tonumber(payload.nextSeq) then
+                    lastEventSeq = tonumber(payload.nextSeq)
+                end
+
+                -- Always keep live state in sync with localhost:3000 controller!
+                if payload.state then
+                    syncLiveStateFromController(payload.state)
+                end
+
+                if type(payload.events) == "table" then
+                    for _, event in ipairs(payload.events) do
                     if event.type == "spawn_avatar" then
                         task.spawn(function()
                             spawnVerifiedFollowerAvatar(event)
@@ -2001,6 +2168,7 @@ task.spawn(function()
                                 end
                             end
                         end)
+                    end
                     end
                 end
             end

@@ -1,0 +1,31 @@
+# Node dependencies
+node_modules/
+*/node_modules/
+
+# Environment variables & secrets
+.env
+.env.*
+!.env.example
+
+# Logs
+logs/
+*.log
+npm-debug.log*
+yarn-debug.log*
+yarn-error.log*
+
+# Runtime data (dynamic streamer databases)
+bridge-server/data/followers.json
+bridge-server/data/user_mappings.json
+
+# macOS system files
+.DS_Store
+.DS_Store?
+._*
+.Spotlight-V100
+.Trashes
+
+# Editor / IDE settings
+.vscode/
+.idea/
+

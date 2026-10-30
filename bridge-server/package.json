@@ -1,0 +1,15 @@
+{
+  "name": "tiktok-roblox-bridge",
+  "version": "1.0.0",
+  "description": "Local bridge server connecting TikTok Live Chat, Follower Verification, and Rose Gifts to Roblox Studio",
+  "main": "server.js",
+  "scripts": {
+    "start": "node server.js"
+  },
+  "dependencies": {
+    "cors": "^2.8.5",
+    "dotenv": "^16.4.7",
+    "express": "^4.21.2",
+    "tiktok-live-connector": "^2.5.0"
+  }
+}

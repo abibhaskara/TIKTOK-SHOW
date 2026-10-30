@@ -198,9 +198,17 @@
         <button class="btn-pink" onclick="simulate('rose_gift')">🌹 Send Rose (Effect + Dance + POV)</button>
         <button class="btn-primary" style="background:linear-gradient(135deg, #10b981, #059669);font-weight:700;" onclick="simulate('panda_gift')">🐼 Send Panda (Giant 30s + 10s POV)</button>
         <button class="btn-primary" style="background:#8b5cf6;" onclick="simulate('member_join')">👋 Viewer Join (RGB Fireworks)</button>
-        <button class="btn-primary" style="background:linear-gradient(135deg, #a855f7, #ec4899);" onclick="simulate('hat_mustache_dragon')">🎩 Send Hat and Mustache (3 Dragons 20s Event)</button>
+        <button class="btn-primary" style="background:linear-gradient(135deg, #a855f7, #ec4899);" onclick="simulate('hat_mustache_dragon')">🎩🧙‍♂️ Send Hat & Mustache / Topi Penyihir (3 Dragons 20s Event)</button>
         <button class="btn-primary" style="background:linear-gradient(135deg, #06b6d4, #3b82f6);" onclick="simulate('finger_heart_dolphin')">🐬 Send Finger Heart (5 Leaping Dolphins 15s)</button>
         <button class="btn-primary" style="background:linear-gradient(135deg, #0ea5e9, #1d4ed8);font-weight:700;" onclick="simulate('potato_tsunami')">🥔 Send Potato (15s Giant Tsunami Wave)</button>
+      </div>
+      <div style="margin-top:12px;padding-top:10px;border-top:1px solid var(--border);display:flex;align-items:center;justify-content:space-between;flex-wrap:wrap;gap:8px;">
+        <span style="font-size:12px;color:var(--muted);">
+          🎲 <strong>Auto Random Gift (Every 7s):</strong> Randomly applies <em>Rose</em>, <em>Panda</em>, or <em>3 Dragons</em> to an avatar
+        </span>
+        <button id="btnAutoRandomGift" class="btn-success" style="padding:6px 14px;font-size:12px;" onclick="toggleAutoRandomGift()">
+          🎲 Auto 7s Gift: ON
+        </button>
       </div>
     </div>
   </div>
@@ -622,7 +630,40 @@
       }
     }
 
+    let isAutoRandomGiftOn = true;
+    async function loadAutoRandomGiftStatus() {
+      try {
+        const res = await fetch("/api/auto_random_gift");
+        const data = await res.json();
+        if (data.ok) {
+          isAutoRandomGiftOn = Boolean(data.enabled);
+          updateAutoRandomGiftBtn();
+        }
+      } catch (_) {}
+    }
+
+    function updateAutoRandomGiftBtn() {
+      const btn = document.getElementById("btnAutoRandomGift");
+      if (!btn) return;
+      btn.textContent = isAutoRandomGiftOn ? "🎲 Auto 7s Gift: ON" : "⏸️ Auto 7s Gift: OFF";
+      btn.className = isAutoRandomGiftOn ? "btn-success" : "btn-outline";
+    }
+
+    async function toggleAutoRandomGift() {
+      isAutoRandomGiftOn = !isAutoRandomGiftOn;
+      updateAutoRandomGiftBtn();
+      try {
+        await fetch("/api/auto_random_gift", {
+          method: "POST",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({ enabled: isAutoRandomGiftOn })
+        });
+        refreshStatus();
+      } catch (_) {}
+    }
+
     loadTunnelStatus();
+    loadAutoRandomGiftStatus();
     loadDanceConfig();
     setInterval(refreshStatus, 1000);
     refreshStatus();

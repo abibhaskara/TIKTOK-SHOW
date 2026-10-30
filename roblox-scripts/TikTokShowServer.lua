@@ -970,6 +970,8 @@ local function attachNametag(character, tiktokUniqueId, robloxUsername, isRoseVI
     local billboard = Instance.new("BillboardGui")
     billboard.Name = "TikTokNametag"
     billboard.Adornee = head
+    character:SetAttribute("TikTokUniqueId", tostring(tiktokUniqueId))
+    character:SetAttribute("RobloxUsername", tostring(robloxUsername))
     local isPandaVIP = (isRoseVIP == "panda")
     local isRose = (isRoseVIP == true or isRoseVIP == "rose")
 
@@ -1490,7 +1492,7 @@ local function triggerRoseGiftEffect(event)
     local giftName = event.giftName or "Rose"
     local key = string.lower(tiktokUniqueId)
 
-    local targetCharacter = activeAvatarsByTikTok[key]
+    local targetCharacter = event.targetCharacter or activeAvatarsByTikTok[key]
 
     -- If their avatar isn't currently spawned, spawn it right now if we have their robloxUserId!
     if (not targetCharacter or not targetCharacter.Parent) and robloxUserId then
@@ -1574,7 +1576,7 @@ local function triggerPandaGiftEffect(event)
     local giftName = event.giftName or "Panda"
     local key = string.lower(tiktokUniqueId)
 
-    local targetCharacter = activeAvatarsByTikTok[key]
+    local targetCharacter = event.targetCharacter or activeAvatarsByTikTok[key]
 
     -- If their avatar isn't currently spawned, summon it right now!
     if (not targetCharacter or not targetCharacter.Parent) then
@@ -1699,6 +1701,95 @@ local function triggerPandaGiftEffect(event)
 end
 
 -- ============================================================================
+-- Auto Random Gift Effect Loop (Every 7 Seconds)
+-- Only chooses randomly from:
+--   1. 🌹 Send Rose (Effect + Dance + POV)
+--   2. 🐼 Send Panda (Giant 30s + 10s POV)
+--   3. 🧙‍♂️ / 🎩 Send Topi Penyihir / Hat and Mustache (3 Dragons 20s Event)
+-- ============================================================================
+local AUTO_RANDOM_GIFT_INTERVAL = 7.0
+local autoRandomGiftEnabled = true
+
+local function getActiveSpawnedAvatars()
+    local list = {}
+    if avatarsFolder then
+        for _, child in ipairs(avatarsFolder:GetChildren()) do
+            if child:IsA("Model") and child:FindFirstChildOfClass("Humanoid") and (child:FindFirstChild("HumanoidRootPart") or child.PrimaryPart) then
+                table.insert(list, child)
+            end
+        end
+    end
+    return list
+end
+
+task.spawn(function()
+    while true do
+        task.wait(AUTO_RANDOM_GIFT_INTERVAL)
+        if autoRandomGiftEnabled then
+            local activeAvatars = getActiveSpawnedAvatars()
+            local chosenAva = nil
+            if #activeAvatars > 0 then
+                chosenAva = activeAvatars[math.random(1, #activeAvatars)]
+            end
+
+            local tiktokId = (chosenAva and chosenAva:GetAttribute("TikTokUniqueId")) or (chosenAva and chosenAva.Name) or "cool_viewer99"
+            local robloxName = (chosenAva and chosenAva:GetAttribute("RobloxUsername")) or (chosenAva and chosenAva.Name) or "builderman"
+
+            -- Pool of ONLY the 3 requested gift effects:
+            --   1. "rose_gift"        (🌹 Send Rose: Effect + Dance + POV)
+            --   2. "panda_gift"       (🐼 Send Panda: Giant 30s + 10s POV)
+            --   3. "witch_hat_dragon" (🧙‍♂️ / 🎩 3 Dragons 20s Event)
+            local pool = { "rose_gift", "panda_gift" }
+            if not isDragonEventActive then
+                table.insert(pool, "witch_hat_dragon")
+            end
+
+            local chosenGift = pool[math.random(1, #pool)]
+            print(string.format("🎲 [AUTO 7s GIFT] Randomly applying '%s' to avatar '%s' (@%s)", chosenGift, tostring(robloxName), tostring(tiktokId)))
+
+            if chosenGift == "rose_gift" then
+                task.spawn(function()
+                    triggerRoseGiftEffect({
+                        targetCharacter = chosenAva,
+                        tiktokUniqueId = tiktokId,
+                        robloxUsername = robloxName,
+                        robloxUserId = (not chosenAva) and 1 or nil,
+                        giftName = "Rose"
+                    })
+                end)
+            elseif chosenGift == "panda_gift" then
+                task.spawn(function()
+                    triggerPandaGiftEffect({
+                        targetCharacter = chosenAva,
+                        tiktokUniqueId = tiktokId,
+                        robloxUsername = robloxName,
+                        robloxUserId = (not chosenAva) and 1 or nil,
+                        giftName = "Panda"
+                    })
+                end)
+            elseif chosenGift == "witch_hat_dragon" then
+                if chosenAva then
+                    applyRoseGiftEffects(chosenAva, 5.0)
+                    playAvatarAnimation(chosenAva, VIP_ROSE_DANCE_ANIMS)
+                end
+                task.spawn(function()
+                    triggerWitchHatDragons({
+                        tiktokUniqueId = tiktokId,
+                        robloxUsername = robloxName,
+                        giftName = "Hat and Mustache"
+                    })
+                end)
+                remoteEvent:FireAllClients("ShowBannerAlert", {
+                    alertType = "witch_hat_dragon",
+                    tiktokUniqueId = tiktokId,
+                    giftName = "Hat and Mustache"
+                })
+            end
+        end
+    end
+end)
+
+-- ============================================================================
 -- Poll Node.js Bridge Server (Auto-Supports Studio Localhost & Roblox Player Cloud Tunnel)
 -- ============================================================================
 print("================================================================")
@@ -1804,6 +1895,9 @@ task.spawn(function()
                     elseif event.type == "set_camera_scene" then
                         print("[TikTokShow] 🎥 Camera Scene switched to: " .. tostring(event.scene))
                         remoteEvent:FireAllClients("SetCameraScene", { scene = event.scene })
+                    elseif event.type == "set_auto_random_gift" then
+                        autoRandomGiftEnabled = (event.enabled ~= false)
+                        print("[TikTokShow] 🎲 Auto 7s Random Gift set to: " .. tostring(autoRandomGiftEnabled))
                     elseif event.type == "update_bridge_url" and event.publicBridgeUrl then
                         workspace:SetAttribute("PublicBridgeUrl", tostring(event.publicBridgeUrl))
                         PUBLIC_BRIDGE_URL = tostring(event.publicBridgeUrl)

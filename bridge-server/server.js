@@ -689,6 +689,26 @@ app.post("/api/dance_config", (req, res) => {
 
 // 2c. Camera Scene Switcher Endpoint (Auto-Cycle, Drone, Paparazzi, Pull-In)
 let activeCameraScene = "auto";
+let autoRandomGiftEnabled = true;
+
+app.get("/api/auto_random_gift", (req, res) => {
+  res.json({ ok: true, enabled: autoRandomGiftEnabled, intervalSeconds: 7 });
+});
+
+app.post("/api/auto_random_gift", (req, res) => {
+  const { enabled } = req.body || {};
+  autoRandomGiftEnabled = Boolean(enabled);
+  enqueueRobloxEvent({
+    type: "set_auto_random_gift",
+    enabled: autoRandomGiftEnabled
+  });
+  addLog(
+    "simulate",
+    `🎲 [AUTO 7s GIFT] ${autoRandomGiftEnabled ? "ENABLED" : "PAUSED"} random 7s gift loop (Rose / Panda / 3 Dragons)`
+  );
+  res.json({ ok: true, enabled: autoRandomGiftEnabled });
+});
+
 app.get("/api/camera_scene", (req, res) => {
   res.json({ ok: true, scene: activeCameraScene });
 });

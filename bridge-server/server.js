@@ -678,6 +678,99 @@ app.post("/api/camera_scene", (req, res) => {
   res.json({ ok: true, scene: activeCameraScene });
 });
 
+// 2d. Public Tunnel Endpoint for Playing in Regular Roblox Player (Cloud Server -> Local Bridge)
+let activeTunnelInstance = null;
+let publicTunnelUrl = process.env.PUBLIC_TUNNEL_URL || "";
+
+function syncPublicBridgeUrlToLua(eventsUrl) {
+  try {
+    const serverLuaPath = path.join(__dirname, "..", "roblox-scripts", "TikTokShowServer.lua");
+    const clientLuaPath = path.join(__dirname, "..", "roblox-scripts", "TikTokShowClient.lua");
+    if (fs.existsSync(serverLuaPath)) {
+      let lua = fs.readFileSync(serverLuaPath, "utf8");
+      lua = lua.replace(
+        /local PUBLIC_BRIDGE_URL = workspace:GetAttribute\("PublicBridgeUrl"\) or "[^"]*"/,
+        `local PUBLIC_BRIDGE_URL = workspace:GetAttribute("PublicBridgeUrl") or "${eventsUrl}"`
+      );
+      fs.writeFileSync(serverLuaPath, lua, "utf8");
+      if (fs.existsSync(clientLuaPath)) {
+        const clientLua = fs.readFileSync(clientLuaPath, "utf8");
+        fs.writeFileSync(
+          path.join(__dirname, "sync_payload.json"),
+          JSON.stringify({ server_code: lua, client_code: clientLua })
+        );
+      }
+    }
+  } catch (err) {
+    console.error("[TunnelSyncError]", err.message);
+  }
+}
+
+app.get("/api/tunnel", (req, res) => {
+  const eventsUrl = publicTunnelUrl ? `${publicTunnelUrl.replace(/\/$/, "")}/api/events` : "http://localhost:3000/api/events";
+  res.json({
+    ok: true,
+    active: Boolean(publicTunnelUrl),
+    tunnelUrl: publicTunnelUrl,
+    eventsUrl
+  });
+});
+
+app.post("/api/tunnel/start", async (req, res) => {
+  try {
+    if (activeTunnelInstance) {
+      try { activeTunnelInstance.close(); } catch (_) {}
+      activeTunnelInstance = null;
+    }
+    const localtunnel = require("localtunnel");
+    activeTunnelInstance = await localtunnel({ port: PORT });
+    publicTunnelUrl = activeTunnelInstance.url;
+    const eventsUrl = `${publicTunnelUrl.replace(/\/$/, "")}/api/events`;
+
+    activeTunnelInstance.on("close", () => {
+      addLog("warn", "🌐 Public Tunnel closed.");
+    });
+
+    syncPublicBridgeUrlToLua(eventsUrl);
+    enqueueRobloxEvent({
+      type: "update_bridge_url",
+      publicBridgeUrl: eventsUrl
+    });
+
+    addLog("info", `🌐 [PUBLIC TUNNEL READY] Roblox Player Cloud URL: ${eventsUrl}`);
+    res.json({
+      ok: true,
+      active: true,
+      tunnelUrl: publicTunnelUrl,
+      eventsUrl
+    });
+  } catch (err) {
+    addLog("error", `Failed to start public tunnel: ${err.message}`);
+    res.status(500).json({ ok: false, error: err.message });
+  }
+});
+
+app.post("/api/tunnel/set", (req, res) => {
+  const { tunnelUrl } = req.body || {};
+  const clean = String(tunnelUrl || "").trim().replace(/\/api\/events\/?$/, "").replace(/\/$/, "");
+  publicTunnelUrl = clean;
+  const eventsUrl = clean ? `${clean}/api/events` : "http://localhost:3000/api/events";
+
+  syncPublicBridgeUrlToLua(eventsUrl);
+  enqueueRobloxEvent({
+    type: "update_bridge_url",
+    publicBridgeUrl: eventsUrl
+  });
+
+  addLog("info", `🌐 [PUBLIC URL UPDATED] Set Roblox Player Bridge URL to: ${eventsUrl}`);
+  res.json({
+    ok: true,
+    active: Boolean(clean),
+    tunnelUrl: publicTunnelUrl,
+    eventsUrl
+  });
+});
+
 // 3. Connect/Switch TikTok Live account at runtime
 app.post("/api/connect", async (req, res) => {
   const { username, bypass, apiKey } = req.body || {};

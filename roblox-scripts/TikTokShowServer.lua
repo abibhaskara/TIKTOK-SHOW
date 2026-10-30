@@ -671,9 +671,11 @@ local function triggerFingerHeartDolphins(giftData)
 end
 
 -- ============================================================================
--- Configuration
+-- Configuration (Auto-Detects Studio Localhost vs Published Roblox Player Tunnel)
 -- ============================================================================
-local BRIDGE_URL = "http://localhost:3000/api/events"
+local LOCAL_BRIDGE_URL = "http://localhost:3000/api/events"
+local PUBLIC_BRIDGE_URL = workspace:GetAttribute("PublicBridgeUrl") or "https://blue-rings-throw.loca.lt/api/events"
+local BRIDGE_URL = RunService:IsStudio() and LOCAL_BRIDGE_URL or PUBLIC_BRIDGE_URL
 local POLL_INTERVAL = 0.15           -- Fast 150ms polling for instant live reactions!
 local STAGE_DANCE_DURATION = 4.5     -- Seconds an avatar dances on the Main Stage before walking to crowd
 local ROSE_POV_DURATION = 4.5        -- Seconds the Camera POV focuses on an avatar when they send a Rose
@@ -780,93 +782,14 @@ local function enforceMaxAvatars()
     end
 end
 
--- Also update workspace.CurrentCamera on the Server (for Studio "Server" / "Run" viewport mode!)
-if RunService:IsStudio() then
-    local MAIN_CAMERA_CFRAME = CFrame.lookAt(
-        STAGE_POSITION + Vector3.new(0, 10, 22),
-        STAGE_POSITION + Vector3.new(0, 3.0, 0)
-    )
-
-    local DRONE_CENTER = Vector3.new(47, 78.929, -115.5)
-    local DRONE_AREA_SIZE = Vector3.new(288, 33.907, 233)
-    local DRONE_RADIUS_X = (DRONE_AREA_SIZE.X / 2) * 0.72
-    local DRONE_RADIUS_Z = (DRONE_AREA_SIZE.Z / 2) * 0.72
-    local DRONE_SPEED = 0.12
-
-    RunService.Heartbeat:Connect(function(dt)
-        local cam = workspace.CurrentCamera
-        if not cam then return end
-        cam.CameraType = Enum.CameraType.Scriptable
-
-        if not currentServerTrackedAvatar or not currentServerTrackedAvatar.Parent then
-            currentServerTrackedAvatar = crowdQueue[#crowdQueue]
-        end
-
-        if isServerRoseVIP and currentServerTrackedAvatar and currentServerTrackedAvatar.Parent then
-            local hrp = currentServerTrackedAvatar:FindFirstChild("HumanoidRootPart") or currentServerTrackedAvatar.PrimaryPart
-            if hrp then
-                local targetLookAt = hrp.Position + Vector3.new(0, 1.8, 0)
-                local elapsed = os.clock() - serverRoseStartTime
-                local orbitAngle = math.sin(elapsed * 1.8) * 0.55
-                local frontVec = (hrp.CFrame * CFrame.Angles(0, orbitAngle, 0)).LookVector
-                local camPos = targetLookAt + (frontVec * 10.5) + Vector3.new(0, 2.4, 0)
-                local desiredCFrame = CFrame.lookAt(camPos, targetLookAt)
-                cam.CFrame = cam.CFrame:Lerp(desiredCFrame, math.clamp(dt * 8, 0, 1))
-                return
-            end
-        end
-
-        -- Follow during stage posing
-        if isStageBusy and currentServerTrackedAvatar and currentServerTrackedAvatar.Parent then
-            local hrp = currentServerTrackedAvatar:FindFirstChild("HumanoidRootPart") or currentServerTrackedAvatar.PrimaryPart
-            if hrp then
-                local targetLookAt = hrp.Position + Vector3.new(0, 1.8, 0)
-                local frontVec = hrp.CFrame.LookVector
-                local camPos = targetLookAt + (frontVec * 15.0) + Vector3.new(0, 3.8, 0)
-                local desiredCFrame = CFrame.lookAt(camPos, targetLookAt)
-                cam.CFrame = cam.CFrame:Lerp(desiredCFrame, math.clamp(dt * 8, 0, 1))
-                return
-            end
-        end
-
-        -- Within 5 seconds after posing finished
-        local timeSincePoseEnd = (serverStagePoseFinishTime > 0) and (os.clock() - serverStagePoseFinishTime) or 999
-        if timeSincePoseEnd < 5.0 and currentServerTrackedAvatar and currentServerTrackedAvatar.Parent then
-            local hrp = currentServerTrackedAvatar:FindFirstChild("HumanoidRootPart") or currentServerTrackedAvatar.PrimaryPart
-            if hrp then
-                local targetLookAt = hrp.Position + Vector3.new(0, 1.8, 0)
-                local frontVec = hrp.CFrame.LookVector
-                local camPos = targetLookAt + (frontVec * 15.0) + Vector3.new(0, 3.8, 0)
-                local desiredCFrame = CFrame.lookAt(camPos, targetLookAt)
-                cam.CFrame = cam.CFrame:Lerp(desiredCFrame, math.clamp(dt * 7, 0, 1))
-                return
-            end
-        end
-
-        -- Drone view when no avatar has spawned on stage for 5 seconds after posing
-        local t = os.clock() * DRONE_SPEED
-        local droneX = DRONE_CENTER.X + math.cos(t) * DRONE_RADIUS_X
-        local droneZ = DRONE_CENTER.Z + math.sin(t) * DRONE_RADIUS_Z
-        local droneY = DRONE_CENTER.Y + (DRONE_AREA_SIZE.Y * 0.25) + (math.sin(t * 1.5) * 6)
-
-        local lookTarget = DRONE_CENTER + Vector3.new(
-            math.cos(t + 0.6) * 18,
-            -(DRONE_AREA_SIZE.Y * 0.35),
-            math.sin(t + 0.6) * 18
-        )
-        local droneCFrame = CFrame.lookAt(Vector3.new(droneX, droneY, droneZ), lookTarget)
-        cam.CFrame = cam.CFrame:Lerp(droneCFrame, math.clamp(dt * 3.5, 0, 1))
-    end)
-end
-
 -- Custom Walking & Roaming Waypoints
 local TRANSITION_WAYPOINT = Vector3.new(50, 59.248, -105.44)
 local ROAM_AREA = {
-    minX = 37,
-    maxX = 62,
+    minX = 39.5,
+    maxX = 60.5,
     minY = 59.198,
     maxY = 59.248,
-    minZ = -124.44,
+    minZ = -122.5,
     maxZ = -105.44
 }
 
@@ -1370,26 +1293,30 @@ local function spawnVerifiedFollowerAvatar(event)
 
     -- Face forward and dance
     if character and character.Parent then
-        local standPos = targetRoamSpot
-        character:PivotTo(CFrame.lookAt(standPos, standPos + Vector3.new(0, 0, 20)))
+        local currentPos = character:GetPivot().Position
+        character:PivotTo(CFrame.lookAt(currentPos, currentPos + Vector3.new(0, 0, 20)))
         playAvatarAnimation(character, CROWD_DANCE_ANIMS)
 
         -- Periodically roam between spots within the boundary area
         task.spawn(function()
             while character and character.Parent and humanoid and humanoid.Parent do
-                task.wait(math.random(6, 11))
+                task.wait(math.random(7, 13))
                 if not character or not character.Parent then break end
 
-                local newSpot = getRandomRoamPosition()
-                playWalkAnimation(character)
-                humanoid:MoveTo(newSpot)
-                humanoid.MoveToFinished:Wait()
-                stopWalkAnimation(character)
+                -- Do not walk away if currently featured in a VIP Spotlight (Rose / Panda)
+                local vipUntil = character:GetAttribute("VIPSpotlightUntil") or 0
+                if os.clock() >= vipUntil then
+                    local newSpot = getRandomRoamPosition()
+                    playWalkAnimation(character)
+                    humanoid:MoveTo(newSpot)
+                    humanoid.MoveToFinished:Wait()
+                    stopWalkAnimation(character)
 
-                if character and character.Parent then
-                    local currentPos = character:GetPivot().Position
-                    character:PivotTo(CFrame.lookAt(currentPos, currentPos + Vector3.new(0, 0, 20)))
-                    playAvatarAnimation(character, CROWD_DANCE_ANIMS)
+                    if character and character.Parent and os.clock() >= (character:GetAttribute("VIPSpotlightUntil") or 0) then
+                        local posNow = character:GetPivot().Position
+                        character:PivotTo(CFrame.lookAt(posNow, posNow + Vector3.new(0, 0, 20)))
+                        playAvatarAnimation(character, CROWD_DANCE_ANIMS)
+                    end
                 end
             end
         end)
@@ -1445,18 +1372,23 @@ local function triggerRoseGiftEffect(event)
         return
     end
 
+    -- Pause roaming while in VIP Spotlight so the avatar stands still for the camera
+    targetCharacter:SetAttribute("VIPSpotlightUntil", os.clock() + ROSE_POV_DURATION + 1.5)
+    stopWalkAnimation(targetCharacter)
+    local hum = targetCharacter:FindFirstChildOfClass("Humanoid")
+    local hrp = targetCharacter:FindFirstChild("HumanoidRootPart") or targetCharacter.PrimaryPart
+    if hum and hrp then
+        hum:MoveTo(hrp.Position)
+    end
+
     -- Upgrade overhead tag to Rose VIP style
     attachNametag(targetCharacter, tiktokUniqueId, targetCharacter.Name, true)
 
     -- Apply Rose Particle Emitters + Glow Highlight
     applyRoseGiftEffects(targetCharacter, ROSE_POV_DURATION + 1.0)
 
-    -- Play energetic VIP Rose Dance + celebratory jumps
+    -- Play energetic VIP Rose Dance
     playAvatarAnimation(targetCharacter, VIP_ROSE_DANCE_ANIMS)
-    local hum = targetCharacter:FindFirstChildOfClass("Humanoid")
-    if hum then
-        hum.Jump = true
-    end
 
     -- Tell Client Camera to smoothly zoom POV directly to this avatar for ROSE_POV_DURATION seconds!
     currentServerTrackedAvatar = targetCharacter
@@ -1554,6 +1486,15 @@ local function triggerPandaGiftEffect(event)
         return
     end
 
+    -- Pause roaming while in 10s Panda POV Spotlight
+    targetCharacter:SetAttribute("VIPSpotlightUntil", os.clock() + PANDA_POV_DURATION + 1.5)
+    stopWalkAnimation(targetCharacter)
+    local hum = targetCharacter:FindFirstChildOfClass("Humanoid")
+    local hrp = targetCharacter:FindFirstChild("HumanoidRootPart") or targetCharacter.PrimaryPart
+    if hum and hrp then
+        hum:MoveTo(hrp.Position)
+    end
+
     -- Enlarge current avatar to Giant Titan size (3.0x scale) for 30 seconds!
     pcall(function()
         targetCharacter:ScaleTo(PANDA_GIANT_SCALE)
@@ -1565,10 +1506,8 @@ local function triggerPandaGiftEffect(event)
     -- Apply glowing emerald/gold titan aura & particles for 30 seconds
     applyPandaGiftEffects(targetCharacter, PANDA_GIANT_DURATION)
 
-    -- Play energetic celebration dance & jump
+    -- Play energetic celebration dance
     playAvatarAnimation(targetCharacter, VIP_ROSE_DANCE_ANIMS)
-    local hum = targetCharacter:FindFirstChildOfClass("Humanoid")
-    if hum then hum.Jump = true end
 
     -- Safe revert after 30 seconds
     avatarGiantToken[targetCharacter] = (avatarGiantToken[targetCharacter] or 0) + 1
@@ -1603,17 +1542,44 @@ local function triggerPandaGiftEffect(event)
 end
 
 -- ============================================================================
--- Poll Node.js Local Bridge Server (http://localhost:3000/api/events)
+-- Poll Node.js Bridge Server (Auto-Supports Studio Localhost & Roblox Player Cloud Tunnel)
 -- ============================================================================
 print("================================================================")
 print("🎬 TikTok Show Server Started! Polling " .. BRIDGE_URL)
 print("================================================================")
 
+local function fetchBridgeEvents(url)
+    local ok, res = pcall(function()
+        return HttpService:RequestAsync({
+            Url = url,
+            Method = "GET",
+            Headers = {
+                ["Bypass-Tunnel-Reminder"] = "true",
+                ["ngrok-skip-browser-warning"] = "true",
+                ["Accept"] = "application/json"
+            }
+        })
+    end)
+    if ok and res and res.Success and res.Body then
+        return true, res.Body
+    end
+    return false, nil
+end
+
 task.spawn(function()
     while true do
-        local ok, responseBody = pcall(function()
-            return HttpService:GetAsync(BRIDGE_URL, true)
-        end)
+        local activeUrl = BRIDGE_URL
+        local customPublicUrl = workspace:GetAttribute("PublicBridgeUrl")
+        if not RunService:IsStudio() and customPublicUrl and customPublicUrl ~= "" then
+            activeUrl = customPublicUrl
+        end
+
+        local ok, responseBody = fetchBridgeEvents(activeUrl)
+
+        -- Fallback to PublicBridgeUrl if localhost isn't reachable
+        if (not ok) and customPublicUrl and customPublicUrl ~= "" and customPublicUrl ~= activeUrl then
+            ok, responseBody = fetchBridgeEvents(customPublicUrl)
+        end
 
         if ok and responseBody then
             local decodeOk, payload = pcall(function()
@@ -1672,6 +1638,10 @@ task.spawn(function()
                     elseif event.type == "set_camera_scene" then
                         print("[TikTokShow] 🎥 Camera Scene switched to: " .. tostring(event.scene))
                         remoteEvent:FireAllClients("SetCameraScene", { scene = event.scene })
+                    elseif event.type == "update_bridge_url" and event.publicBridgeUrl then
+                        workspace:SetAttribute("PublicBridgeUrl", tostring(event.publicBridgeUrl))
+                        PUBLIC_BRIDGE_URL = tostring(event.publicBridgeUrl)
+                        print("[TikTokShow] 🌐 Updated Public Bridge URL to: " .. PUBLIC_BRIDGE_URL)
                     elseif event.type == "update_dance_config" then
                         task.spawn(function()
                             print("[TikTokShow] 💃 Received update_dance_config from web controller!")

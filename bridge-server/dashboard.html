@@ -204,6 +204,32 @@
     </div>
   </div>
 
+  <!-- Roblox Player Cloud Connection (Public Tunnel) -->
+  <div class="card" style="margin-bottom: 20px;">
+    <div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:10px;flex-wrap:wrap;gap:8px;">
+      <h2>🌐 Connect to Regular Roblox Player (Public Cloud Tunnel)</h2>
+      <span id="tunnelFeedback" style="font-size:12px;color:var(--cyan);font-weight:600;"></span>
+    </div>
+    <p style="font-size:13px;color:var(--muted);margin-top:-4px;margin-bottom:12px;">
+      In <strong>Roblox Studio</strong>, <code>http://localhost:3000/api/events</code> works automatically. To play in regular <strong>Roblox Player (Bloxstrap / Windows / Mac)</strong>, click <strong>Start Free Public Tunnel</strong> below (or paste your Cloudflare/ngrok URL), then Publish to Roblox!
+    </p>
+    <div class="row" style="align-items:center;flex-wrap:wrap;">
+      <button class="btn-primary" style="background:linear-gradient(135deg, #10b981, #3b82f6);white-space:nowrap;" onclick="startPublicTunnel()">
+        🚀 Start 1-Click Free Public Tunnel
+      </button>
+      <div style="flex:1;min-width:260px;">
+        <input type="text" id="publicTunnelInput" placeholder="Or paste custom tunnel URL (e.g. https://xyz.trycloudflare.com)" style="margin-bottom:0;" />
+      </div>
+      <button class="btn-outline" style="white-space:nowrap;" onclick="saveCustomTunnel()">
+        💾 Save URL
+      </button>
+    </div>
+    <div style="margin-top:10px;font-size:12px;color:var(--muted);display:flex;align-items:center;gap:8px;flex-wrap:wrap;">
+      <span>Active Roblox Player Polling Endpoint:</span>
+      <code id="activeEventsUrl" style="background:#0d0f14;padding:4px 8px;border-radius:6px;color:var(--cyan);border:1px solid var(--border);">http://localhost:3000/api/events</code>
+    </div>
+  </div>
+
   <!-- Dance Animation Customizer & Controller -->
   <div class="card" style="margin-bottom: 20px;">
     <div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:12px;flex-wrap:wrap;gap:8px;">
@@ -541,6 +567,61 @@
       });
     }
 
+    // ==========================================
+    // Public Tunnel Functions (For Roblox Player)
+    // ==========================================
+    async function loadTunnelStatus() {
+      try {
+        const res = await fetch("/api/tunnel");
+        const data = await res.json();
+        if (data.ok) {
+          document.getElementById("activeEventsUrl").textContent = data.eventsUrl;
+          if (data.tunnelUrl) {
+            document.getElementById("publicTunnelInput").value = data.tunnelUrl;
+          }
+        }
+      } catch (_) {}
+    }
+
+    async function startPublicTunnel() {
+      const fb = document.getElementById("tunnelFeedback");
+      fb.textContent = "⏳ Starting public tunnel...";
+      try {
+        const res = await fetch("/api/tunnel/start", { method: "POST" });
+        const data = await res.json();
+        if (data.ok) {
+          document.getElementById("publicTunnelInput").value = data.tunnelUrl;
+          document.getElementById("activeEventsUrl").textContent = data.eventsUrl;
+          fb.textContent = "✅ Public Tunnel Active & Synced to Lua!";
+        } else {
+          fb.textContent = "❌ " + (data.error || "Failed to start tunnel");
+        }
+      } catch (err) {
+        fb.textContent = "❌ Error: " + err.message;
+      }
+    }
+
+    async function saveCustomTunnel() {
+      const tunnelUrl = document.getElementById("publicTunnelInput").value.trim();
+      const fb = document.getElementById("tunnelFeedback");
+      fb.textContent = "⏳ Saving tunnel URL...";
+      try {
+        const res = await fetch("/api/tunnel/set", {
+          method: "POST",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({ tunnelUrl })
+        });
+        const data = await res.json();
+        if (data.ok) {
+          document.getElementById("activeEventsUrl").textContent = data.eventsUrl;
+          fb.textContent = "✅ Custom Tunnel URL Saved & Synced!";
+        }
+      } catch (err) {
+        fb.textContent = "❌ Error: " + err.message;
+      }
+    }
+
+    loadTunnelStatus();
     loadDanceConfig();
     setInterval(refreshStatus, 1000);
     refreshStatus();

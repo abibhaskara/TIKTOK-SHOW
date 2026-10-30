@@ -12,8 +12,18 @@ local Players = game:GetService("Players")
 local ReplicatedStorage = game:GetService("ReplicatedStorage")
 local TweenService = game:GetService("TweenService")
 local RunService = game:GetService("RunService")
+local VirtualUser = game:GetService("VirtualUser")
 
 local localPlayer = Players.LocalPlayer
+
+-- ============================================================================
+-- Built-in Anti-AFK / Anti-Disconnect (Bypass 20-Minute Idle Kick)
+-- ============================================================================
+localPlayer.Idled:Connect(function()
+    VirtualUser:CaptureController()
+    VirtualUser:ClickButton2(Vector2.new(0, 0))
+    print("[TikTokShow] 🛡️ Anti-AFK triggered: Prevented 20-minute idle disconnect!")
+end)
 
 -- ============================================================================
 -- Camera Configuration (Continuous Avatar Follow + 3-Scene Broadcast Director)

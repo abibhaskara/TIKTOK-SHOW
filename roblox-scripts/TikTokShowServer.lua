@@ -831,7 +831,7 @@ end
 -- Configuration (Auto-Detects Studio Localhost vs Published Roblox Player Tunnel)
 -- ============================================================================
 local LOCAL_BRIDGE_URL = "http://localhost:3000/api/events"
-local PUBLIC_BRIDGE_URL = workspace:GetAttribute("PublicBridgeUrl") or "https://0c0b720362cf98.lhr.life/api/events"
+local PUBLIC_BRIDGE_URL = workspace:GetAttribute("PublicBridgeUrl") or "https://1ecfb6b8b42bab.lhr.life/api/events"
 local BRIDGE_URL = RunService:IsStudio() and LOCAL_BRIDGE_URL or PUBLIC_BRIDGE_URL
 local POLL_INTERVAL = 0.15           -- Fast 150ms polling for instant live reactions!
 local STAGE_DANCE_DURATION = 4.5     -- Seconds an avatar dances on the Main Stage before walking to crowd

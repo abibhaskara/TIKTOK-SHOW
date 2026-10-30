@@ -3,13 +3,13 @@
     "rbxassetid://128280894782553"
   ],
   "crowdDances": [
-    "rbxassetid://507771019"
+    "rbxassetid://3333499508"
   ],
   "vipDances": [
     "rbxassetid://128280894782553"
   ],
   "avatarScale": 1.45,
-  "autoRandomGiftEnabled": false,
-  "autoRandomGiftInterval": 7,
+  "autoRandomGiftEnabled": true,
+  "autoRandomGiftInterval": 20,
   "cameraScene": "auto"
 }

@@ -391,6 +391,27 @@ async function handleGiftEvent(data) {
     return;
   }
 
+  // 4. Check for "Potato" / "Kentang" gift event (15s Giant Tsunami Wave)
+  const isPotato =
+    giftNameLower.includes("potato") ||
+    giftNameLower.includes("kentang");
+
+  if (isPotato) {
+    markAsFollower(tiktokUniqueId);
+    addLog(
+      "potato_tsunami",
+      `🥔 @${tiktokUniqueId} sent "${giftName}"! Unleashing 15s Giant Tsunami Wave!`
+    );
+    enqueueRobloxEvent({
+      type: "potato_tsunami",
+      tiktokUniqueId,
+      tiktokNickname,
+      giftName,
+      repeatCount
+    });
+    return;
+  }
+
   // Check if the gift is a Rose (giftId 5655 is standard TikTok Rose, or name includes "rose") or any gift
   const isRose =
     giftId === 5655 ||
@@ -902,6 +923,18 @@ app.post("/api/simulate", async (req, res) => {
       tiktokUniqueId: cleanTikTok,
       tiktokNickname: cleanTikTok,
       giftName: "Finger Heart",
+      repeatCount: 1
+    });
+    return res.json({ ok: true });
+  }
+
+  if (action === "potato_tsunami") {
+    addLog("simulate", `🧪 [TEST] Simulated 🥔 "Potato" gift from @${cleanTikTok}! Unleashing 15s Giant Tsunami Wave!`);
+    enqueueRobloxEvent({
+      type: "potato_tsunami",
+      tiktokUniqueId: cleanTikTok,
+      tiktokNickname: cleanTikTok,
+      giftName: "Potato",
       repeatCount: 1
     });
     return res.json({ ok: true });

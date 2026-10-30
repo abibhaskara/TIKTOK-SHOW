@@ -671,10 +671,167 @@ local function triggerFingerHeartDolphins(giftData)
 end
 
 -- ============================================================================
+-- Giant Tsunami Wave Event (Potato Gift)
+-- Searches for model "TsunamiWave", animates for 15s:
+--   0s -> 2s: Transparency 1 -> 0
+--   0s -> 15s: Position (59.32, 34.43, -689.134) -> (59.32, 74.414, 77.776)
+--   12s -> 15s: Transparency 0 -> 1
+-- ============================================================================
+local TSUNAMI_START_POS = Vector3.new(59.32, 34.43, -689.134)
+local TSUNAMI_END_POS = Vector3.new(59.32, 74.414, 77.776)
+local TSUNAMI_DURATION = 15.0
+local isTsunamiActive = false
+local cachedTsunamiModel = nil
+local cachedTsunamiRotation = nil
+
+local function setTsunamiTransparency(model, trans)
+    if not model then return end
+    if model:IsA("BasePart") then
+        model.Transparency = trans
+    end
+    for _, desc in ipairs(model:GetDescendants()) do
+        if desc:IsA("BasePart") or desc:IsA("Decal") or desc:IsA("Texture") then
+            desc.Transparency = trans
+        end
+    end
+end
+
+local function moveTsunamiModel(model, pos)
+    if not model then return end
+    if model:IsA("Model") then
+        local rot = cachedTsunamiRotation or model:GetPivot().Rotation
+        model:PivotTo(CFrame.new(pos) * rot)
+    elseif model:IsA("BasePart") then
+        local rot = cachedTsunamiRotation or model.CFrame.Rotation
+        model.CFrame = CFrame.new(pos) * rot
+    end
+end
+
+local function findAndPrepareTsunamiModel()
+    if cachedTsunamiModel and cachedTsunamiModel.Parent then
+        return cachedTsunamiModel
+    end
+
+    local found = workspace:FindFirstChild("TsunamiWave", true) or ReplicatedStorage:FindFirstChild("TsunamiWave", true)
+    if not found then
+        return nil
+    end
+
+    cachedTsunamiModel = found
+    if found:IsA("Model") then
+        cachedTsunamiRotation = found:GetPivot().Rotation
+    elseif found:IsA("BasePart") then
+        cachedTsunamiRotation = found.CFrame.Rotation
+    end
+
+    -- Clean up any legacy free-model scripts (Move, Damage, Destroy) and anchor parts safely
+    for _, desc in ipairs(found:GetDescendants()) do
+        if desc:IsA("BaseScript") then
+            desc.Disabled = true
+            desc:Destroy()
+        elseif desc:IsA("BasePart") then
+            desc.Anchored = true
+            desc.CanCollide = false
+            desc.CanTouch = false
+        elseif desc:IsA("Sound") then
+            desc.Playing = false
+        end
+    end
+
+    -- Start hidden at TSUNAMI_START_POS with Transparency = 1
+    setTsunamiTransparency(found, 1)
+    moveTsunamiModel(found, TSUNAMI_START_POS)
+    if found.Parent ~= workspace then
+        found.Parent = workspace
+    end
+
+    return found
+end
+
+-- Prepare TsunamiWave immediately on server startup so it stays hidden until triggered
+task.defer(findAndPrepareTsunamiModel)
+
+local function triggerPotatoTsunami(giftData)
+    if isTsunamiActive then
+        print("⚠️ Tsunami Wave event is already running!")
+        return
+    end
+
+    local tsunami = findAndPrepareTsunamiModel()
+    if not tsunami then
+        warn("❌ Model 'TsunamiWave' not found in Workspace or ReplicatedStorage!")
+        return
+    end
+
+    isTsunamiActive = true
+    print("🌊 [TSUNAMI EVENT] Unleashing 15s TsunamiWave for Potato gift from @" .. tostring(giftData and giftData.tiktokUniqueId or "viewer"))
+
+    local waveSound = tsunami:FindFirstChildWhichIsA("Sound", true)
+    if waveSound then
+        waveSound.Looped = true
+        waveSound.Volume = 0
+        waveSound:Play()
+    end
+
+    setTsunamiTransparency(tsunami, 1)
+    moveTsunamiModel(tsunami, TSUNAMI_START_POS)
+
+    task.spawn(function()
+        local startTime = os.clock()
+        local conn
+        conn = RunService.Heartbeat:Connect(function()
+            local elapsed = os.clock() - startTime
+            if elapsed >= TSUNAMI_DURATION then
+                conn:Disconnect()
+                return
+            end
+
+            -- 1. Position interpolation: 0s -> 15s from (59.32, 34.43, -689.134) to (59.32, 74.414, 77.776)
+            local posAlpha = math.clamp(elapsed / TSUNAMI_DURATION, 0, 1)
+            local currentPos = TSUNAMI_START_POS:Lerp(TSUNAMI_END_POS, posAlpha)
+            moveTsunamiModel(tsunami, currentPos)
+
+            -- 2. Transparency interpolation:
+            --    0s -> 2s: Transparency 1 -> 0
+            --    2s -> 12s: Transparency 0
+            --    12s -> 15s: Transparency 0 -> 1
+            local trans = 0
+            if elapsed < 2.0 then
+                trans = 1.0 - math.clamp(elapsed / 2.0, 0, 1)
+            elseif elapsed >= 12.0 then
+                trans = math.clamp((elapsed - 12.0) / 3.0, 0, 1)
+            else
+                trans = 0.0
+            end
+            setTsunamiTransparency(tsunami, trans)
+
+            if waveSound then
+                waveSound.Volume = (1.0 - trans) * 4.5
+            end
+        end)
+
+        task.wait(TSUNAMI_DURATION + 0.1)
+        if conn and conn.Connected then
+            conn:Disconnect()
+        end
+
+        -- Ensure final state is Transparency = 1 at end of 15s
+        moveTsunamiModel(tsunami, TSUNAMI_END_POS)
+        setTsunamiTransparency(tsunami, 1)
+        if waveSound then
+            waveSound:Stop()
+        end
+
+        isTsunamiActive = false
+        print("🌊 [TSUNAMI EVENT] 15s TsunamiWave finished & hidden!")
+    end)
+end
+
+-- ============================================================================
 -- Configuration (Auto-Detects Studio Localhost vs Published Roblox Player Tunnel)
 -- ============================================================================
 local LOCAL_BRIDGE_URL = "http://localhost:3000/api/events"
-local PUBLIC_BRIDGE_URL = workspace:GetAttribute("PublicBridgeUrl") or "https://blue-rings-throw.loca.lt/api/events"
+local PUBLIC_BRIDGE_URL = workspace:GetAttribute("PublicBridgeUrl") or "https://fast-days-sin.loca.lt/api/events"
 local BRIDGE_URL = RunService:IsStudio() and LOCAL_BRIDGE_URL or PUBLIC_BRIDGE_URL
 local POLL_INTERVAL = 0.15           -- Fast 150ms polling for instant live reactions!
 local STAGE_DANCE_DURATION = 4.5     -- Seconds an avatar dances on the Main Stage before walking to crowd
@@ -1634,6 +1791,15 @@ task.spawn(function()
                             alertType = "finger_heart_dolphin",
                             tiktokUniqueId = event.tiktokUniqueId,
                             giftName = event.giftName or "Finger Heart"
+                        })
+                    elseif event.type == "potato_tsunami" then
+                        task.spawn(function()
+                            triggerPotatoTsunami(event)
+                        end)
+                        remoteEvent:FireAllClients("ShowBannerAlert", {
+                            alertType = "potato_tsunami",
+                            tiktokUniqueId = event.tiktokUniqueId,
+                            giftName = event.giftName or "Potato"
                         })
                     elseif event.type == "set_camera_scene" then
                         print("[TikTokShow] 🎥 Camera Scene switched to: " .. tostring(event.scene))

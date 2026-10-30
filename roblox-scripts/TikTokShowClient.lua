@@ -617,6 +617,12 @@ remoteEvent.OnClientEvent:Connect(function(action, data)
                 Color3.fromRGB(6, 182, 212),
                 5.0
             )
+        elseif data.alertType == "potato_tsunami" then
+            showBanner(
+                string.format("🥔 @%s sent %s! 🌊 GIANT TSUNAMI WAVE (15s)!", data.tiktokUniqueId, data.giftName or "Potato"),
+                Color3.fromRGB(14, 165, 233),
+                5.0
+            )
         end
     end
 end)

@@ -831,7 +831,7 @@ end
 -- Configuration (Auto-Detects Studio Localhost vs Published Roblox Player Tunnel)
 -- ============================================================================
 local LOCAL_BRIDGE_URL = "http://localhost:3000/api/events"
-local PUBLIC_BRIDGE_URL = workspace:GetAttribute("PublicBridgeUrl") or "https://fast-days-sin.loca.lt/api/events"
+local PUBLIC_BRIDGE_URL = workspace:GetAttribute("PublicBridgeUrl") or "https://tiktokshow796910abib.loca.lt/api/events"
 local BRIDGE_URL = RunService:IsStudio() and LOCAL_BRIDGE_URL or PUBLIC_BRIDGE_URL
 local POLL_INTERVAL = 0.15           -- Fast 150ms polling for instant live reactions!
 local STAGE_DANCE_DURATION = 4.5     -- Seconds an avatar dances on the Main Stage before walking to crowd
@@ -1987,12 +1987,35 @@ local function syncLiveStateFromController(state)
 end
 
 task.spawn(function()
-    local FALLBACK_TUNNEL_URLS = {
-        "https://fast-days-sin.loca.lt/api/events",
-        "https://spicy-windows-do.loca.lt/api/events",
-        "https://fuzzy-ducks-fly.loca.lt/api/events",
-        "https://tiktok-show-bridge-796910.loca.lt/api/events"
-    }
+    local PERMANENT_TUNNEL_URL = "https://tiktokshow796910abib.loca.lt/api/events"
+    local DISCOVERY_URL = "https://ntfy.sh/tiktok_show_abibhaskara_796910_cfg/raw?poll=1&since=24h"
+    local discoveredTunnelUrl = nil
+    local lastDiscoveryCheck = 0
+
+    local function refreshDiscoveredTunnelUrl()
+        if os.clock() - lastDiscoveryCheck < 3.0 then return end
+        lastDiscoveryCheck = os.clock()
+        local ok, res = pcall(function()
+            return HttpService:GetAsync(DISCOVERY_URL)
+        end)
+        if ok and res and res ~= "" then
+            local lastLine = nil
+            for line in string.gmatch(res, "[^\r\n]+") do
+                if string.find(line, "tunnelUrl", 1, true) then
+                    lastLine = line
+                end
+            end
+            if lastLine then
+                local decOk, data = pcall(function()
+                    return HttpService:JSONDecode(lastLine)
+                end)
+                if decOk and data and data.tunnelUrl and tostring(data.tunnelUrl) ~= "" then
+                    discoveredTunnelUrl = tostring(data.tunnelUrl)
+                end
+            end
+        end
+    end
+
     while true do
         local candidateUrls = {}
         local seen = {}
@@ -2007,17 +2030,23 @@ task.spawn(function()
         if RunService:IsStudio() then
             addCandidate(LOCAL_BRIDGE_URL)
         end
-        addCandidate(customPublicUrl)
+        addCandidate(discoveredTunnelUrl)
+        addCandidate(PERMANENT_TUNNEL_URL)
         addCandidate(PUBLIC_BRIDGE_URL)
-        for _, u in ipairs(FALLBACK_TUNNEL_URLS) do
-            addCandidate(u)
-        end
+        addCandidate(customPublicUrl)
 
         local ok, responseBody = false, nil
         for _, url in ipairs(candidateUrls) do
             ok, responseBody = fetchBridgeEvents(url)
             if ok and responseBody then
                 break
+            end
+        end
+
+        if not ok then
+            refreshDiscoveredTunnelUrl()
+            if discoveredTunnelUrl then
+                ok, responseBody = fetchBridgeEvents(discoveredTunnelUrl)
             end
         end
 

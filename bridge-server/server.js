@@ -836,14 +836,47 @@ app.post("/api/camera_scene", (req, res) => {
 
 // 2d. Public Tunnel Endpoint for Playing in Regular Roblox Player (Cloud Server -> Local Bridge)
 // Automatically maintains persistent tunnels for all known published subdomains so you NEVER have to re-publish!
-const TUNNEL_SUBDOMAINS = [
-  "fast-days-sin",
-  "spicy-windows-do",
-  "fuzzy-ducks-fly",
-  "tiktok-show-bridge-796910"
-];
+// Pure alphanumeric subdomain (NO hyphens!) so localtunnel.me ALWAYS grants the exact same permanent URL!
+const PERMANENT_SUBDOMAIN = "tiktokshow796910abib";
+const PERMANENT_TUNNEL_URL = `https://${PERMANENT_SUBDOMAIN}.loca.lt`;
+const CLOUD_DISCOVERY_TOPIC = "https://ntfy.sh/tiktok_show_abibhaskara_796910_cfg";
 const activeTunnels = new Map();
-let publicTunnelUrl = process.env.PUBLIC_TUNNEL_URL || "https://fast-days-sin.loca.lt";
+let isShuttingDown = false;
+let publicTunnelUrl = process.env.PUBLIC_TUNNEL_URL || PERMANENT_TUNNEL_URL;
+
+async function publishTunnelUrlToCloudDiscovery(eventsUrl) {
+  try {
+    const https = require("https");
+    const body = JSON.stringify({ tunnelUrl: eventsUrl, timestamp: Date.now() });
+    const req = https.request(CLOUD_DISCOVERY_TOPIC, {
+      method: "POST",
+      headers: {
+        "Content-Type": "application/json",
+        "Content-Length": Buffer.byteLength(body)
+      }
+    });
+    req.on("error", () => {});
+    req.write(body);
+    req.end();
+  } catch (_) {}
+}
+
+function closeAllTunnelsSync() {
+  isShuttingDown = true;
+  for (const [, inst] of activeTunnels.entries()) {
+    try { inst.close(); } catch (_) {}
+  }
+  activeTunnels.clear();
+}
+
+process.on("SIGTERM", () => {
+  closeAllTunnelsSync();
+  process.exit(0);
+});
+process.on("SIGINT", () => {
+  closeAllTunnelsSync();
+  process.exit(0);
+});
 
 function syncPublicBridgeUrlToLua(eventsUrl) {
   try {
@@ -870,6 +903,7 @@ function syncPublicBridgeUrlToLua(eventsUrl) {
 }
 
 async function openSingleSubdomainTunnel(subdomain) {
+  if (isShuttingDown) return null;
   const localtunnel = require("localtunnel");
   try {
     if (activeTunnels.has(subdomain)) {
@@ -877,14 +911,20 @@ async function openSingleSubdomainTunnel(subdomain) {
       activeTunnels.delete(subdomain);
     }
     const instance = await localtunnel({ port: PORT, subdomain });
+
     activeTunnels.set(subdomain, instance);
+    publicTunnelUrl = instance.url;
+    const eventsUrl = `${instance.url.replace(/\/$/, "")}/api/events`;
+    publishTunnelUrlToCloudDiscovery(eventsUrl);
+    addLog("info", `🌐 [PUBLIC TUNNEL READY] Active Cloud URL: ${eventsUrl}`);
 
     instance.on("close", () => {
       activeTunnels.delete(subdomain);
-      // Auto-reconnect after 2s so tunnel never stays dead!
-      setTimeout(() => {
-        openSingleSubdomainTunnel(subdomain).catch(() => {});
-      }, 2000);
+      if (!isShuttingDown) {
+        setTimeout(() => {
+          openSingleSubdomainTunnel(subdomain).catch(() => {});
+        }, 2000);
+      }
     });
 
     instance.on("error", () => {
@@ -893,24 +933,20 @@ async function openSingleSubdomainTunnel(subdomain) {
 
     return instance.url;
   } catch (err) {
-    setTimeout(() => {
-      openSingleSubdomainTunnel(subdomain).catch(() => {});
-    }, 5000);
+    if (!isShuttingDown) {
+      setTimeout(() => {
+        openSingleSubdomainTunnel(subdomain).catch(() => {});
+      }, 4000);
+    }
     return null;
   }
 }
 
 async function startOrEnsurePublicTunnel() {
   try {
-    const urls = await Promise.all(TUNNEL_SUBDOMAINS.map((sub) => openSingleSubdomainTunnel(sub)));
-    const validUrls = urls.filter(Boolean);
-    if (validUrls.length > 0) {
-      publicTunnelUrl = validUrls[0];
-      const eventsUrl = `${publicTunnelUrl.replace(/\/$/, "")}/api/events`;
-      addLog("info", `🌐 [PUBLIC TUNNELS ACTIVE] Listening on: ${validUrls.join(", ")}`);
-      return { ok: true, active: true, tunnelUrl: publicTunnelUrl, allUrls: validUrls, eventsUrl };
-    }
-    return { ok: false, error: "Could not establish public tunnel" };
+    const url = await openSingleSubdomainTunnel(PERMANENT_SUBDOMAIN);
+    const eventsUrl = `${(url || PERMANENT_TUNNEL_URL).replace(/\/$/, "")}/api/events`;
+    return { ok: Boolean(url), active: Boolean(url), tunnelUrl: url || PERMANENT_TUNNEL_URL, eventsUrl };
   } catch (err) {
     addLog("error", `Failed to start public tunnel: ${err.message}`);
     return { ok: false, error: err.message };

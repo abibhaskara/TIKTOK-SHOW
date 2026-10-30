@@ -8,5 +8,8 @@
   "vipDances": [
     "rbxassetid://128280894782553"
   ],
-  "avatarScale": 1.45
+  "avatarScale": 1.45,
+  "autoRandomGiftEnabled": false,
+  "autoRandomGiftInterval": 7,
+  "cameraScene": "auto"
 }

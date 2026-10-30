@@ -311,18 +311,23 @@ async function handleGiftEvent(data) {
   const giftId = data.giftId;
   const giftNameLower = giftName.toLowerCase();
 
-  // 1. Check for "Topi Penyihir" / "Witch Hat" / "Wizard Hat" gift event
-  const isWitchHat =
+  // 1. Check for "Hat and Mustache" / "Topi dan Kumis" gift event (3 Dragons 20s Event)
+  const isHatAndMustache =
+    giftNameLower.includes("hat and mustache") ||
+    giftNameLower.includes("hat & mustache") ||
+    giftNameLower.includes("mustache") ||
+    giftNameLower.includes("moustache") ||
+    giftNameLower.includes("topi dan kumis") ||
+    giftNameLower.includes("topi & kumis") ||
+    giftNameLower.includes("kumis") ||
     giftNameLower.includes("topi penyihir") ||
-    giftNameLower.includes("witch hat") ||
-    giftNameLower.includes("wizard hat") ||
-    giftNameLower.includes("penyihir");
+    giftNameLower.includes("witch hat");
 
-  if (isWitchHat) {
+  if (isHatAndMustache) {
     markAsFollower(tiktokUniqueId);
     addLog(
       "witch_hat_dragon",
-      `🧙‍♂️ @${tiktokUniqueId} sent "${giftName}"! Unleashing 3 flying dragons rotating the stage!`
+      `🎩 @${tiktokUniqueId} sent "${giftName}"! Unleashing 3 flying dragons rotating the stage!`
     );
     enqueueRobloxEvent({
       type: "witch_hat_dragon",
@@ -904,13 +909,13 @@ app.post("/api/simulate", async (req, res) => {
     return res.json({ ok: true });
   }
 
-  if (action === "witch_hat_dragon") {
-    addLog("simulate", `🧪 [TEST] Simulated 🧙‍♂️ "Topi Penyihir" gift from @${cleanTikTok}! Launching 3 Dragons Event!`);
+  if (action === "hat_mustache_dragon" || action === "witch_hat_dragon") {
+    addLog("simulate", `🧪 [TEST] Simulated 🎩 "Hat and Mustache" gift from @${cleanTikTok}! Launching 3 Dragons Event!`);
     enqueueRobloxEvent({
       type: "witch_hat_dragon",
       tiktokUniqueId: cleanTikTok,
       tiktokNickname: cleanTikTok,
-      giftName: "Topi Penyihir",
+      giftName: "Hat and Mustache",
       repeatCount: 1
     });
     return res.json({ ok: true });

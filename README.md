@@ -15,10 +15,12 @@ Sistem interaktif **TikTok Live ke Roblox** lengkap dengan **Web Controller Dash
    - Kamera POV langsung menyorot karakter raksasa tersebut selama **10 detik** sebelum kembali ke siklus kamera otomatis.
 3. **🌹 Gift Rose / Mawar — VIP Spotlight & POV:**
    - Efek partikel mawar + glow emas, tarian VIP, dan sorotan kamera POV.
-4. **🧙‍♂️ Gift Topi Penyihir (Witch Hat) — 3 Flying Dragons Event (20 Detik):**
+4. **🎩 Gift Hat and Mustache (Topi dan Kumis) — 3 Flying Dragons Event (20 Detik):**
    - Langit berubah menjadi malam dramatis, 3 naga terbang mengelilingi arena sambil menyemburkan api.
 5. **🐬 Gift Finger Heart — 5 Leaping Dolphins Event (15 Detik):**
    - 5 lumba-lumba melompat secara melingkar dari permukaan air dengan efek cipratan air.
+6. **🥔 Gift Potato (Kentang) — Giant Tsunami Wave Event (15 Detik):**
+   - Gelombang Tsunami raksasa muncul (`Transparency 1 → 0` dalam 2 detik), menerjang dari `(59.32, 34.43, -689.134)` menuju `(59.32, 74.414, 77.776)` selama 15 detik, dan memudar (`0 → 1` di detik 12–15).
 6. **🎥 3-Scene Broadcast Camera Director (Bebas Glitch):**
    - **Scene 1 (Drone View - 10s):** Kamera udara memutari seluruh arena.
    - **Scene 2 (Paparazzi Cam - 9s):** Bidikan lensa *telephoto handheld* realistis ke 1 karakter acak dari koridor depan yang bebas halangan.

@@ -605,9 +605,9 @@ remoteEvent.OnClientEvent:Connect(function(action, data)
                 Color3.fromRGB(255, 120, 200),
                 3.0
             )
-        elseif data.alertType == "witch_hat_dragon" then
+        elseif data.alertType == "witch_hat_dragon" or data.alertType == "hat_mustache_dragon" then
             showBanner(
-                string.format("🧙‍♂️ @%s sent Topi Penyihir! 🐉 3 Dragons Summoned!", data.tiktokUniqueId),
+                string.format("🎩 @%s sent %s! 🐉 3 Dragons Summoned!", data.tiktokUniqueId, data.giftName or "Hat and Mustache"),
                 Color3.fromRGB(180, 70, 255),
                 5.0
             )

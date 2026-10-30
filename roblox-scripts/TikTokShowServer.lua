@@ -165,7 +165,7 @@ end
 setStageLightingMode(false)
 
 -- ============================================================================
--- 3 Dragons Flight Event (Topi Penyihir Gift)
+-- 3 Dragons Flight Event (Hat and Mustache / Topi dan Kumis Gift)
 -- Area Center: (50.239, 66.903, -106), Size: (78.479, 22, 84)
 -- Timeline:
 --   0s - 1s: 3 dragons fly in from far apart toward orbit, fade transparency 1 -> 0
@@ -209,7 +209,7 @@ local function triggerWitchHatDragons(giftData)
         return
     end
     isDragonEventActive = true
-    print("🐉 [DRAGON EVENT] Spawning 3 Dragons for Topi Penyihir gift from @" .. tostring(giftData and giftData.tiktokUniqueId or "viewer"))
+    print("🐉 [DRAGON EVENT] Spawning 3 Dragons for Hat and Mustache gift from @" .. tostring(giftData and giftData.tiktokUniqueId or "viewer"))
 
     local template = ReplicatedStorage:FindFirstChild("DragonModel")
     if not template then
@@ -1774,14 +1774,14 @@ task.spawn(function()
                             alertType = "member_join",
                             tiktokUniqueId = event.tiktokUniqueId
                         })
-                    elseif event.type == "witch_hat_dragon" then
+                    elseif event.type == "witch_hat_dragon" or event.type == "hat_mustache_dragon" then
                         task.spawn(function()
                             triggerWitchHatDragons(event)
                         end)
                         remoteEvent:FireAllClients("ShowBannerAlert", {
                             alertType = "witch_hat_dragon",
                             tiktokUniqueId = event.tiktokUniqueId,
-                            giftName = event.giftName or "Topi Penyihir"
+                            giftName = event.giftName or "Hat and Mustache"
                         })
                     elseif event.type == "finger_heart_dolphin" then
                         task.spawn(function()

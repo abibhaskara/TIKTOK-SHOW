@@ -318,7 +318,7 @@ async function handleGiftEvent(data) {
   const giftId = data.giftId;
   const giftNameLower = giftName.toLowerCase();
 
-  // 1. Check for "Hat and Mustache" / "Topi dan Kumis" gift event (3 Dragons 20s Event)
+  // 1. Check for "Hat and Mustache" / Dragons Event
   const isHatAndMustache =
     giftNameLower.includes("hat and mustache") ||
     giftNameLower.includes("hat & mustache") ||
@@ -346,7 +346,7 @@ async function handleGiftEvent(data) {
     return;
   }
 
-  // 2. Check for "Finger Heart" / "Finger Heartsh" gift event
+  // 2. Check for "Finger Heart" / Dolphins Event
   const isFingerHeart =
     giftNameLower.includes("finger heart") ||
     giftNameLower.includes("fingerheart") ||
@@ -369,9 +369,12 @@ async function handleGiftEvent(data) {
     return;
   }
 
-  // 3. Check for "Panda" gift event (Summons or Enlarges avatar to Giant size for 30s + 10s POV)
-  const isPanda = giftNameLower.includes("panda");
-  if (isPanda) {
+  // 3. Check for "LOL" / "Panda" gift event (Summons or Enlarges avatar to Giant size for 30s + 10s POV)
+  const isLOLorPanda =
+    giftNameLower.includes("lol") ||
+    giftNameLower.includes("panda");
+
+  if (isLOLorPanda) {
     markAsFollower(tiktokUniqueId);
 
     const key = tiktokUniqueId.toLowerCase();
@@ -387,7 +390,7 @@ async function handleGiftEvent(data) {
 
     addLog(
       "gift_panda",
-      `🐼 @${tiktokUniqueId} sent Panda Gift! Summoning/Enlarging Giant Avatar for 30s (10s POV)!`
+      `😂 @${tiktokUniqueId} sent "${giftName}" (Giant Titan)! Summoning/Enlarging Avatar for 30s (10s POV)!`
     );
 
     enqueueRobloxEvent({
@@ -397,39 +400,41 @@ async function handleGiftEvent(data) {
       robloxUserId: mapping ? mapping.robloxUserId : null,
       robloxUsername: mapping ? mapping.robloxUsername : tiktokUniqueId,
       robloxDisplayName: mapping ? mapping.robloxDisplayName : tiktokNickname,
-      giftName: "Panda",
+      giftName: giftNameLower.includes("lol") ? "LOL" : "Panda",
       repeatCount
     });
     return;
   }
 
-  // 4. Check for "Potato" / "Kentang" gift event (15s Giant Tsunami Wave)
-  const isPotato =
+  // 4. Check for "Doughnut" / "Potato" gift event (15s Giant Tsunami Wave)
+  const isDoughnutOrPotato =
+    giftNameLower.includes("doughnut") ||
+    giftNameLower.includes("donut") ||
     giftNameLower.includes("potato") ||
     giftNameLower.includes("kentang");
 
-  if (isPotato) {
+  if (isDoughnutOrPotato) {
     markAsFollower(tiktokUniqueId);
     addLog(
       "potato_tsunami",
-      `🥔 @${tiktokUniqueId} sent "${giftName}"! Unleashing 15s Giant Tsunami Wave!`
+      `🍩 @${tiktokUniqueId} sent "${giftName}"! Unleashing 15s Giant Tsunami Wave!`
     );
     enqueueRobloxEvent({
       type: "potato_tsunami",
       tiktokUniqueId,
       tiktokNickname,
-      giftName,
+      giftName: giftNameLower.includes("donut") || giftNameLower.includes("doughnut") ? "Doughnut" : "Potato",
       repeatCount
     });
     return;
   }
 
-  // Check if the gift is a Rose (giftId 5655 is standard TikTok Rose, or name includes "rose") or any gift
+  // 5. Check if the gift is a Rose (VIP Spotlight + Dance + Camera POV)
   const isRose =
     giftId === 5655 ||
     giftNameLower.includes("rose") ||
     giftNameLower.includes("mawar") ||
-    true; // Trigger VIP Rose spotlight for Rose (and other gifts!)
+    true; // Default fallback for any other gift
 
   if (!isRose) return;
 
@@ -1104,7 +1109,7 @@ app.post("/api/simulate", async (req, res) => {
     return res.json({ ok: true, mapping });
   }
 
-  if (action === "panda_gift") {
+  if (action === "panda_gift" || action === "lol_gift") {
     let profile = null;
     if (cleanRoblox) {
       profile = await resolveRobloxUsername(cleanRoblox);
@@ -1113,12 +1118,12 @@ app.post("/api/simulate", async (req, res) => {
       }
     }
     const mapping = userMappings[cleanTikTok.toLowerCase()];
-    addLog("simulate", `🧪 [TEST] Simulated 🐼 Panda Gift from @${cleanTikTok} (${mapping?.robloxUsername || cleanRoblox || "stage avatar"})! Giant Avatar 30s + POV 10s!`);
+    addLog("simulate", `🧪 [TEST] Simulated 😂 "LOL" / Panda Gift from @${cleanTikTok}! Giant Avatar 30s + POV 10s!`);
     enqueueRobloxEvent({
       type: "panda_gift",
       tiktokUniqueId: cleanTikTok,
       tiktokNickname: cleanTikTok,
-      giftName: "Panda",
+      giftName: "LOL",
       repeatCount: 1,
       robloxUserId: mapping ? mapping.robloxUserId : (profile ? profile.userId : null),
       robloxUsername: mapping ? mapping.robloxUsername : (profile ? profile.username : cleanRoblox),
@@ -1161,13 +1166,13 @@ app.post("/api/simulate", async (req, res) => {
     return res.json({ ok: true });
   }
 
-  if (action === "potato_tsunami") {
-    addLog("simulate", `🧪 [TEST] Simulated 🥔 "Potato" gift from @${cleanTikTok}! Unleashing 15s Giant Tsunami Wave!`);
+  if (action === "potato_tsunami" || action === "doughnut_tsunami") {
+    addLog("simulate", `🧪 [TEST] Simulated 🍩 "Doughnut" gift from @${cleanTikTok}! Unleashing 15s Giant Tsunami Wave!`);
     enqueueRobloxEvent({
       type: "potato_tsunami",
       tiktokUniqueId: cleanTikTok,
       tiktokNickname: cleanTikTok,
-      giftName: "Potato",
+      giftName: "Doughnut",
       repeatCount: 1
     });
     return res.json({ ok: true });

@@ -558,10 +558,11 @@ remoteEvent.OnClientEvent:Connect(function(action, data)
         end
 
     elseif action == "FocusAvatarPOV" and data then
-        local isPanda = (data.giftName == "Panda") or (data.alertType == "panda_gift")
-        if isPanda then
+        local isGiant = (data.giftName == "Panda") or (data.giftName == "LOL") or (data.alertType == "panda_gift")
+        if isGiant then
+            local icon = (data.giftName == "LOL") and "😂" or "🐼"
             showBanner(
-                string.format("🐼 @%s sent Panda! 💥 GIANT TITAN AVATAR (30s)!", data.tiktokUniqueId),
+                string.format("%s @%s sent %s! 💥 GIANT TITAN AVATAR (30s)!", icon, data.tiktokUniqueId, data.giftName or "LOL"),
                 Color3.fromRGB(16, 185, 129),
                 6.0
             )
@@ -572,7 +573,7 @@ remoteEvent.OnClientEvent:Connect(function(action, data)
                 data.duration or 4.5
             )
         end
-        focusCameraOnAvatar(data.targetModel, data.duration or (isPanda and 10.0 or 4.5))
+        focusCameraOnAvatar(data.targetModel, data.duration or (isGiant and 10.0 or 4.5))
 
     elseif action == "ShowBannerAlert" and data then
         if data.alertType == "spawn" then
@@ -586,8 +587,9 @@ remoteEvent.OnClientEvent:Connect(function(action, data)
                 3.5
             )
         elseif data.alertType == "panda_gift" then
+            local icon = (data.giftName == "LOL") and "😂" or "🐼"
             showBanner(
-                string.format("🐼 @%s sent Panda! 💥 GIANT TITAN AVATAR (30s)!", data.tiktokUniqueId),
+                string.format("%s @%s sent %s! 💥 GIANT TITAN AVATAR (30s)!", icon, data.tiktokUniqueId, data.giftName or "LOL"),
                 Color3.fromRGB(16, 185, 129),
                 6.0
             )
@@ -628,8 +630,9 @@ remoteEvent.OnClientEvent:Connect(function(action, data)
                 5.0
             )
         elseif data.alertType == "potato_tsunami" then
+            local icon = (data.giftName == "Doughnut" or data.giftName == "Donut") and "🍩" or "🥔"
             showBanner(
-                string.format("🥔 @%s sent %s! 🌊 GIANT TSUNAMI WAVE (15s)!", data.tiktokUniqueId, data.giftName or "Potato"),
+                string.format("%s @%s sent %s! 🌊 GIANT TSUNAMI WAVE (15s)!", icon, data.tiktokUniqueId, data.giftName or "Doughnut"),
                 Color3.fromRGB(14, 165, 233),
                 5.0
             )

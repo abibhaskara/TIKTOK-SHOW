@@ -835,14 +835,13 @@ app.post("/api/camera_scene", (req, res) => {
 });
 
 // 2d. Public Tunnel Endpoint for Playing in Regular Roblox Player (Cloud Server -> Local Bridge)
-// Automatically maintains persistent tunnels for all known published subdomains so you NEVER have to re-publish!
-// Pure alphanumeric subdomain (NO hyphens!) so localtunnel.me ALWAYS grants the exact same permanent URL!
-const PERMANENT_SUBDOMAIN = "tiktokshow796910abib";
-const PERMANENT_TUNNEL_URL = `https://${PERMANENT_SUBDOMAIN}.loca.lt`;
+// Uses built-in SSH Reverse Tunnel (localhost.run) which NEVER freezes under high-frequency polling,
+// and broadcasts the active URL to ntfy.sh so the published Roblox game discovers it automatically!
+const { spawn } = require("child_process");
 const CLOUD_DISCOVERY_TOPIC = "https://ntfy.sh/tiktok_show_abibhaskara_796910_cfg";
-const activeTunnels = new Map();
+let activeSshTunnel = null;
 let isShuttingDown = false;
-let publicTunnelUrl = process.env.PUBLIC_TUNNEL_URL || PERMANENT_TUNNEL_URL;
+let publicTunnelUrl = process.env.PUBLIC_TUNNEL_URL || "";
 
 async function publishTunnelUrlToCloudDiscovery(eventsUrl) {
   try {
@@ -863,10 +862,10 @@ async function publishTunnelUrlToCloudDiscovery(eventsUrl) {
 
 function closeAllTunnelsSync() {
   isShuttingDown = true;
-  for (const [, inst] of activeTunnels.entries()) {
-    try { inst.close(); } catch (_) {}
+  if (activeSshTunnel) {
+    try { activeSshTunnel.kill(); } catch (_) {}
+    activeSshTunnel = null;
   }
-  activeTunnels.clear();
 }
 
 process.on("SIGTERM", () => {
@@ -902,62 +901,95 @@ function syncPublicBridgeUrlToLua(eventsUrl) {
   }
 }
 
-async function openSingleSubdomainTunnel(subdomain) {
-  if (isShuttingDown) return null;
-  const localtunnel = require("localtunnel");
-  try {
-    if (activeTunnels.has(subdomain)) {
-      try { activeTunnels.get(subdomain).close(); } catch (_) {}
-      activeTunnels.delete(subdomain);
+function startOrEnsurePublicTunnel() {
+  return new Promise((resolve) => {
+    if (isShuttingDown) return resolve({ ok: false });
+    if (activeSshTunnel) {
+      try { activeSshTunnel.kill(); } catch (_) {}
+      activeSshTunnel = null;
     }
-    const instance = await localtunnel({ port: PORT, subdomain });
 
-    activeTunnels.set(subdomain, instance);
-    publicTunnelUrl = instance.url;
-    const eventsUrl = `${instance.url.replace(/\/$/, "")}/api/events`;
-    publishTunnelUrlToCloudDiscovery(eventsUrl);
-    addLog("info", `🌐 [PUBLIC TUNNEL READY] Active Cloud URL: ${eventsUrl}`);
+    let resolved = false;
+    const sshArgs = [
+      "-o", "StrictHostKeyChecking=no",
+      "-o", "ServerAliveInterval=15",
+      "-o", "ServerAliveCountMax=3",
+      "-o", "ExitOnForwardFailure=yes",
+      "-R", `80:127.0.0.1:${PORT}`,
+      "nokey@localhost.run"
+    ];
 
-    instance.on("close", () => {
-      activeTunnels.delete(subdomain);
+    const proc = spawn("ssh", sshArgs);
+    activeSshTunnel = proc;
+
+    const handleOutput = (chunk) => {
+      const text = chunk.toString();
+      const match = text.match(/https:\/\/[a-z0-9-]+\.lhr\.life/i);
+      if (match) {
+        const url = match[0];
+        if (publicTunnelUrl !== url) {
+          publicTunnelUrl = url;
+          const eventsUrl = `${url}/api/events`;
+          publishTunnelUrlToCloudDiscovery(eventsUrl);
+          syncPublicBridgeUrlToLua(eventsUrl);
+          addLog("info", `🌐 [HIGH-SPEED SSH TUNNEL READY] Cloud URL: ${eventsUrl}`);
+        }
+        if (!resolved) {
+          resolved = true;
+          resolve({
+            ok: true,
+            active: true,
+            tunnelUrl: publicTunnelUrl,
+            eventsUrl: `${publicTunnelUrl}/api/events`
+          });
+        }
+      }
+    };
+
+    proc.stdout.on("data", handleOutput);
+    proc.stderr.on("data", handleOutput);
+
+    proc.on("close", () => {
+      if (activeSshTunnel === proc) {
+        activeSshTunnel = null;
+      }
+      if (!resolved) {
+        resolved = true;
+        resolve({ ok: false, error: "SSH tunnel closed before ready" });
+      }
       if (!isShuttingDown) {
         setTimeout(() => {
-          openSingleSubdomainTunnel(subdomain).catch(() => {});
-        }, 2000);
+          startOrEnsurePublicTunnel().catch(() => {});
+        }, 2500);
       }
     });
 
-    instance.on("error", () => {
-      try { instance.close(); } catch (_) {}
+    proc.on("error", (err) => {
+      if (!resolved) {
+        resolved = true;
+        resolve({ ok: false, error: err.message });
+      }
     });
 
-    return instance.url;
-  } catch (err) {
-    if (!isShuttingDown) {
-      setTimeout(() => {
-        openSingleSubdomainTunnel(subdomain).catch(() => {});
-      }, 4000);
-    }
-    return null;
-  }
-}
-
-async function startOrEnsurePublicTunnel() {
-  try {
-    const url = await openSingleSubdomainTunnel(PERMANENT_SUBDOMAIN);
-    const eventsUrl = `${(url || PERMANENT_TUNNEL_URL).replace(/\/$/, "")}/api/events`;
-    return { ok: Boolean(url), active: Boolean(url), tunnelUrl: url || PERMANENT_TUNNEL_URL, eventsUrl };
-  } catch (err) {
-    addLog("error", `Failed to start public tunnel: ${err.message}`);
-    return { ok: false, error: err.message };
-  }
+    setTimeout(() => {
+      if (!resolved) {
+        resolved = true;
+        resolve({
+          ok: Boolean(publicTunnelUrl),
+          active: Boolean(publicTunnelUrl),
+          tunnelUrl: publicTunnelUrl,
+          eventsUrl: publicTunnelUrl ? `${publicTunnelUrl}/api/events` : "http://localhost:3000/api/events"
+        });
+      }
+    }, 7000);
+  });
 }
 
 app.get("/api/tunnel", (req, res) => {
   const eventsUrl = publicTunnelUrl ? `${publicTunnelUrl.replace(/\/$/, "")}/api/events` : "http://localhost:3000/api/events";
   res.json({
     ok: true,
-    active: activeTunnels.size > 0 || Boolean(publicTunnelUrl),
+    active: Boolean(activeSshTunnel && publicTunnelUrl),
     tunnelUrl: publicTunnelUrl,
     eventsUrl
   });

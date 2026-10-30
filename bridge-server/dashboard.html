@@ -196,6 +196,7 @@
         <button class="btn-primary" onclick="simulate('spawn_follower')">✅ Spawn Avatar (Stage → Crowd)</button>
         <button class="btn-amber" onclick="simulate('not_following')">⚠️ Test Not Following</button>
         <button class="btn-pink" onclick="simulate('rose_gift')">🌹 Send Rose (Effect + Dance + POV)</button>
+        <button class="btn-primary" style="background:linear-gradient(135deg, #10b981, #059669);font-weight:700;" onclick="simulate('panda_gift')">🐼 Send Panda (Giant 30s + 10s POV)</button>
         <button class="btn-primary" style="background:#8b5cf6;" onclick="simulate('member_join')">👋 Viewer Join (RGB Fireworks)</button>
         <button class="btn-primary" style="background:linear-gradient(135deg, #a855f7, #ec4899);" onclick="simulate('witch_hat_dragon')">🧙‍♂️ Send Topi Penyihir (3 Dragons 20s Event)</button>
         <button class="btn-primary" style="background:linear-gradient(135deg, #06b6d4, #3b82f6);" onclick="simulate('finger_heart_dolphin')">🐬 Send Finger Heart (5 Leaping Dolphins 15s)</button>
@@ -274,6 +275,32 @@
         </div>
       </div>
     </details>
+  </div>
+
+  <!-- Camera Director Controller -->
+  <div class="card" style="margin-bottom: 20px;">
+    <div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:10px;flex-wrap:wrap;gap:8px;">
+      <h2>🎥 Live Camera Director (3 Cinematic Scenes)</h2>
+      <span id="cameraFeedback" style="font-size:12px;color:var(--cyan);font-weight:600;"></span>
+    </div>
+    <p style="font-size:13px;color:var(--muted);margin-top:-6px;margin-bottom:14px;">
+      Switch between the 3 custom cinematic scenes live, or keep it on <strong>🔄 Auto-Cycle</strong> (10s Drone → 9s Paparazzi → 8s Pull-In):
+    </p>
+
+    <div style="display:flex;gap:10px;flex-wrap:wrap;">
+      <button id="btnCamAuto" class="btn-primary" style="padding:10px 16px;background:linear-gradient(135deg, #25f4ee, #3b82f6);color:#000;" onclick="setCameraMode('auto')">
+        🔄 Auto-Cycle (All 3 Scenes)
+      </button>
+      <button id="btnCamDrone" class="btn-outline" style="padding:10px 16px;" onclick="setCameraMode('drone')">
+        🚁 1. Drone Surveillance
+      </button>
+      <button id="btnCamPaparazzi" class="btn-outline" style="padding:10px 16px;" onclick="setCameraMode('paparazzi')">
+        📸 2. Paparazzi Cam (Handheld Telephoto)
+      </button>
+      <button id="btnCamPullin" class="btn-outline" style="padding:10px 16px;" onclick="setCameraMode('pullin')">
+        🎬 3. Cinematic Pull-In (Runway Dolly)
+      </button>
+    </div>
   </div>
 
   <div class="card">
@@ -468,6 +495,50 @@
       document.getElementById("crowdDanceIds").value = "507771019\n507776043\n507777268";
       document.getElementById("vipDanceIds").value = "507776043\n507777268\n507770677";
       saveDancePlaylists();
+    }
+
+    // ==========================================
+    // Camera Director Functions
+    // ==========================================
+    let currentCamMode = "auto";
+    async function setCameraMode(mode) {
+      currentCamMode = mode;
+      updateCamButtons(mode);
+      const feedback = document.getElementById("cameraFeedback");
+      feedback.textContent = `⏳ Switching camera to ${mode.toUpperCase()}...`;
+      try {
+        const res = await fetch("/api/camera_scene", {
+          method: "POST",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({ scene: mode })
+        });
+        const data = await res.json();
+        if (data.ok) {
+          feedback.textContent = `✅ Camera mode: ${mode.toUpperCase()}`;
+          setTimeout(() => { if (feedback.textContent.includes(mode.toUpperCase())) feedback.textContent = ""; }, 3000);
+          refreshStatus();
+        }
+      } catch (err) {
+        feedback.textContent = "❌ Error: " + err.message;
+      }
+    }
+
+    function updateCamButtons(activeMode) {
+      const modes = ["auto", "drone", "paparazzi", "pullin"];
+      const ids = { auto: "btnCamAuto", drone: "btnCamDrone", paparazzi: "btnCamPaparazzi", pullin: "btnCamPullin" };
+      modes.forEach(m => {
+        const btn = document.getElementById(ids[m]);
+        if (!btn) return;
+        if (m === activeMode) {
+          btn.className = "btn-primary";
+          btn.style.background = "linear-gradient(135deg, #25f4ee, #3b82f6)";
+          btn.style.color = "#000";
+        } else {
+          btn.className = "btn-outline";
+          btn.style.background = "transparent";
+          btn.style.color = "var(--text)";
+        }
+      });
     }
 
     loadDanceConfig();

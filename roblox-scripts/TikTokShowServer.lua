@@ -674,10 +674,16 @@ end
 -- Configuration
 -- ============================================================================
 local BRIDGE_URL = "http://localhost:3000/api/events"
-local POLL_INTERVAL = 0.5            -- Seconds between checking the Node.js bridge queue
+local POLL_INTERVAL = 0.15           -- Fast 150ms polling for instant live reactions!
 local STAGE_DANCE_DURATION = 4.5     -- Seconds an avatar dances on the Main Stage before walking to crowd
 local ROSE_POV_DURATION = 4.5        -- Seconds the Camera POV focuses on an avatar when they send a Rose
-local MAX_CROWD_AVATARS = 12         -- Delete oldest character if total avatars exceed 12
+local MAX_CROWD_AVATARS = 30         -- Delete oldest character if total avatars exceed 30
+
+-- Panda Gift: 30s Giant Titan Scale & 10s POV
+local PANDA_GIANT_SCALE = 3.0        -- Giant Titan scale (3.0x size)
+local PANDA_GIANT_DURATION = 30.0    -- Giant size lasts for 30s
+local PANDA_POV_DURATION = 10.0      -- Camera POV stays on giant avatar for 10s
+local avatarGiantToken = {}
 
 -- Default Avatar Scale (1.45x larger by default for stream visibility)
 local DEFAULT_AVATAR_SCALE = 1.45
@@ -765,7 +771,7 @@ local function enforceMaxAvatars()
     end
     crowdQueue = validQueue
 
-    -- Delete oldest character(s) if count exceeds MAX_CROWD_AVATARS (12)
+    -- Delete oldest character(s) if count exceeds MAX_CROWD_AVATARS (30)
     while #crowdQueue > MAX_CROWD_AVATARS do
         local oldest = table.remove(crowdQueue, 1)
         if oldest and oldest.Parent then
@@ -884,10 +890,13 @@ local function attachNametag(character, tiktokUniqueId, robloxUsername, isRoseVI
     local billboard = Instance.new("BillboardGui")
     billboard.Name = "TikTokNametag"
     billboard.Adornee = head
+    local isPandaVIP = (isRoseVIP == "panda")
+    local isRose = (isRoseVIP == true or isRoseVIP == "rose")
+
     -- Using Studs (Scale) sizing so the nametag maintains realistic 3D world dimensions
     -- and stops growing on screen as the camera pulls further away:
     billboard.Size = UDim2.new(5.5, 0, 1.5, 0)
-    billboard.StudsOffset = Vector3.new(0, 3.8, 0)
+    billboard.StudsOffset = Vector3.new(0, isPandaVIP and 4.6 or 3.8, 0)
     billboard.AlwaysOnTop = true
     billboard.MaxDistance = 140
     billboard.DistanceLowerLimit = 10
@@ -907,7 +916,7 @@ local function attachNametag(character, tiktokUniqueId, robloxUsername, isRoseVI
 
     local stroke = Instance.new("UIStroke")
     stroke.Thickness = 2
-    stroke.Color = isRoseVIP and Color3.fromRGB(254, 44, 85) or Color3.fromRGB(37, 244, 238)
+    stroke.Color = isPandaVIP and Color3.fromRGB(16, 185, 129) or (isRose and Color3.fromRGB(254, 44, 85) or Color3.fromRGB(37, 244, 238))
     stroke.Parent = container
 
     -- Line 1: TikTok Username
@@ -918,9 +927,15 @@ local function attachNametag(character, tiktokUniqueId, robloxUsername, isRoseVI
     tiktokLabel.BackgroundTransparency = 1
     tiktokLabel.Font = Enum.Font.GothamBold
     tiktokLabel.TextSize = 16
-    tiktokLabel.TextColor3 = Color3.fromRGB(37, 244, 238)
+    tiktokLabel.TextColor3 = isPandaVIP and Color3.fromRGB(52, 211, 153) or Color3.fromRGB(37, 244, 238)
     tiktokLabel.TextStrokeTransparency = 0.3
-    tiktokLabel.Text = (isRoseVIP and "🌹 @" or "🎵 @") .. tostring(tiktokUniqueId)
+    local prefix = "🎵 @"
+    if isPandaVIP then
+        prefix = "🐼 [TITAN] @"
+    elseif isRose then
+        prefix = "🌹 @"
+    end
+    tiktokLabel.Text = prefix .. tostring(tiktokUniqueId)
     tiktokLabel.TextScaled = true
     tiktokLabel.Parent = container
 
@@ -932,7 +947,7 @@ local function attachNametag(character, tiktokUniqueId, robloxUsername, isRoseVI
     robloxLabel.BackgroundTransparency = 1
     robloxLabel.Font = Enum.Font.GothamSemibold
     robloxLabel.TextSize = 14
-    robloxLabel.TextColor3 = isRoseVIP and Color3.fromRGB(255, 215, 0) or Color3.fromRGB(240, 244, 255)
+    robloxLabel.TextColor3 = (isPandaVIP or isRose) and Color3.fromRGB(255, 215, 0) or Color3.fromRGB(240, 244, 255)
     robloxLabel.TextStrokeTransparency = 0.4
     robloxLabel.Text = "🎮 Roblox: " .. tostring(robloxUsername)
     robloxLabel.TextScaled = true
@@ -943,7 +958,15 @@ end
 -- Helper: Resolve Animation ID (Supports both direct Animation IDs and Catalog Emotes)
 -- ============================================================================
 local InsertService = game:GetService("InsertService")
-local resolvedAnimationCache = {}
+local resolvedAnimationCache = {
+    ["507771019"] = "rbxassetid://507771019",
+    ["507776043"] = "rbxassetid://507776043",
+    ["507777268"] = "rbxassetid://507777268",
+    ["3333499508"] = "rbxassetid://3333499508",
+    ["507770677"] = "rbxassetid://507770677",
+    ["128280894782553"] = "rbxassetid://136857756041583",
+    ["125465899146465"] = "rbxassetid://91348383154280",
+}
 
 local function resolvePlayableAnimationId(rawId)
     if not rawId then return nil end
@@ -954,7 +977,14 @@ local function resolvePlayableAnimationId(rawId)
         return resolvedAnimationCache[numId]
     end
 
-    -- First try InsertService:LoadAsset in case it is a Catalog Emote (AssetTypeId 61)
+    -- Direct built-in / legacy animation IDs (< 12 digits) are already playable Animation assets (Zero latency)
+    if #numId < 12 then
+        local directId = "rbxassetid://" .. numId
+        resolvedAnimationCache[numId] = directId
+        return directId
+    end
+
+    -- Only UGC/Catalog Emotes (12+ digits) need LoadAsset to unpack
     local ok, assetModel = pcall(function()
         return InsertService:LoadAsset(tonumber(numId))
     end)
@@ -1027,6 +1057,69 @@ local function playAvatarAnimation(character, animIdList)
 end
 
 -- ============================================================================
+-- Helper: Avatar Walk / Locomotion Animation Helpers
+-- ============================================================================
+local DEFAULT_WALK_ANIM = "http://www.roblox.com/asset/?id=10921269718"
+
+local function getAvatarWalkAnimId(character)
+    local animScript = character:FindFirstChild("Animate")
+    if animScript then
+        local walkVal = animScript:FindFirstChild("walk") or animScript:FindFirstChild("run")
+        local found = walkVal and walkVal:FindFirstChildWhichIsA("Animation")
+        if found and found.AnimationId and found.AnimationId ~= "" then
+            return found.AnimationId
+        end
+    end
+    return DEFAULT_WALK_ANIM
+end
+
+local function playWalkAnimation(character)
+    local humanoid = character:FindFirstChildOfClass("Humanoid")
+    if not humanoid then return nil end
+
+    local animator = humanoid:FindFirstChildOfClass("Animator")
+    if not animator then
+        animator = Instance.new("Animator")
+        animator.Parent = humanoid
+    end
+
+    -- Stop playing dance tracks
+    for _, track in ipairs(animator:GetPlayingAnimationTracks()) do
+        track:Stop(0.15)
+    end
+
+    local walkId = getAvatarWalkAnimId(character)
+    local anim = Instance.new("Animation")
+    anim.AnimationId = walkId
+
+    local ok, track = pcall(function()
+        return animator:LoadAnimation(anim)
+    end)
+
+    if ok and track then
+        track.Priority = Enum.AnimationPriority.Action4
+        track.Looped = true
+        track:Play(0.1)
+        return track
+    end
+    return nil
+end
+
+local function stopWalkAnimation(character)
+    local humanoid = character:FindFirstChildOfClass("Humanoid")
+    if not humanoid then return end
+
+    local animator = humanoid:FindFirstChildOfClass("Animator")
+    if animator then
+        for _, track in ipairs(animator:GetPlayingAnimationTracks()) do
+            if track.Priority == Enum.AnimationPriority.Action4 then
+                track:Stop(0.15)
+            end
+        end
+    end
+end
+
+-- ============================================================================
 -- Helper: Attach Rose Gift Particle Burst & VIP Glow
 -- ============================================================================
 local function applyRoseGiftEffects(character, duration)
@@ -1074,6 +1167,62 @@ local function applyRoseGiftEffects(character, duration)
 end
 
 -- ============================================================================
+-- Panda Gift: Emerald & Gold Titan Glowing Aura + Particles (30s)
+-- ============================================================================
+local function applyPandaGiftEffects(character, duration)
+    local hrp = character:FindFirstChild("HumanoidRootPart") or character.PrimaryPart
+    if not hrp then return end
+
+    -- Clean up any existing panda effects
+    local oldH = character:FindFirstChild("PandaHighlight")
+    if oldH then oldH:Destroy() end
+    local oldP = hrp:FindFirstChild("PandaParticles")
+    if oldP then oldP:Destroy() end
+    local oldL = hrp:FindFirstChild("PandaLight")
+    if oldL then oldL:Destroy() end
+
+    -- Emerald + Gold Titan Highlight
+    local highlight = Instance.new("Highlight")
+    highlight.Name = "PandaHighlight"
+    highlight.FillColor = Color3.fromRGB(16, 185, 129)
+    highlight.FillTransparency = 0.55
+    highlight.OutlineColor = Color3.fromRGB(255, 215, 0)
+    highlight.OutlineTransparency = 0
+    highlight.Parent = character
+    Debris:AddItem(highlight, duration)
+
+    -- Bright Emerald Glow Light
+    local light = Instance.new("PointLight")
+    light.Name = "PandaLight"
+    light.Color = Color3.fromRGB(52, 211, 153)
+    light.Brightness = 5.0
+    light.Range = 32
+    light.Parent = hrp
+    Debris:AddItem(light, duration)
+
+    -- Emerald / Gold Sparkle Particle Emitter
+    local pandaParticles = Instance.new("ParticleEmitter")
+    pandaParticles.Name = "PandaParticles"
+    pandaParticles.Texture = "rbxasset://textures/particles/sparkles_main.dds"
+    pandaParticles.Color = ColorSequence.new({
+        ColorSequenceKeypoint.new(0, Color3.fromRGB(16, 185, 129)),
+        ColorSequenceKeypoint.new(0.5, Color3.fromRGB(52, 211, 153)),
+        ColorSequenceKeypoint.new(1, Color3.fromRGB(255, 215, 0)),
+    })
+    pandaParticles.Size = NumberSequence.new({
+        NumberSequenceKeypoint.new(0, 0.8),
+        NumberSequenceKeypoint.new(0.5, 2.0),
+        NumberSequenceKeypoint.new(1, 0),
+    })
+    pandaParticles.Rate = 55
+    pandaParticles.Lifetime = NumberRange.new(1.5, 2.8)
+    pandaParticles.Speed = NumberRange.new(5, 12)
+    pandaParticles.SpreadAngle = Vector2.new(180, 180)
+    pandaParticles.Parent = hrp
+    Debris:AddItem(pandaParticles, duration)
+end
+
+-- ============================================================================
 -- Spawn Verified Follower Avatar on Main Stage -> Walk to Background Crowd
 -- ============================================================================
 local isStageBusy = false
@@ -1107,6 +1256,26 @@ local function spawnVerifiedFollowerAvatar(event)
     local humanoid = character:FindFirstChildOfClass("Humanoid")
     if humanoid then
         humanoid.DisplayDistanceType = Enum.HumanoidDisplayDistanceType.None
+        humanoid.Running:Connect(function(speed)
+            if not character or not character.Parent then return end
+            if speed > 1.0 then
+                local isAlreadyWalking = false
+                local anim = humanoid:FindFirstChildOfClass("Animator")
+                if anim then
+                    for _, tr in ipairs(anim:GetPlayingAnimationTracks()) do
+                        if tr.Priority == Enum.AnimationPriority.Action4 then
+                            isAlreadyWalking = true
+                            break
+                        end
+                    end
+                end
+                if not isAlreadyWalking then
+                    playWalkAnimation(character)
+                end
+            elseif speed <= 0.5 then
+                stopWalkAnimation(character)
+            end
+        end)
     end
 
     -- Scale avatar larger by default for prominent visibility!
@@ -1116,11 +1285,14 @@ local function spawnVerifiedFollowerAvatar(event)
 
     -- Wait briefly if another avatar is mid-spotlight on the center pedestal
     local waitCount = 0
-    while isStageBusy and waitCount < 8 do
-        task.wait(0.5)
+    while isStageBusy and waitCount < 5 do
+        task.wait(0.2)
         waitCount += 1
     end
     isStageBusy = true
+    task.delay(STAGE_DANCE_DURATION + 0.5, function()
+        isStageBusy = false
+    end)
 
     -- Place avatar on your Stage Position facing +Z
     local stagePos = STAGE_POSITION + Vector3.new(0, 3.5, 0)
@@ -1177,6 +1349,7 @@ local function spawnVerifiedFollowerAvatar(event)
     -- 1. Walk directly to the transition point (50, 59.248, -105.44)
     if humanoid then
         humanoid.WalkSpeed = 14
+        playWalkAnimation(character)
         humanoid:MoveTo(TRANSITION_WAYPOINT)
         humanoid.MoveToFinished:Wait()
     end
@@ -1189,8 +1362,10 @@ local function spawnVerifiedFollowerAvatar(event)
     character:SetAttribute("CrowdSpot", targetRoamSpot)
 
     if humanoid then
+        playWalkAnimation(character)
         humanoid:MoveTo(targetRoamSpot)
         humanoid.MoveToFinished:Wait()
+        stopWalkAnimation(character)
     end
 
     -- Face forward and dance
@@ -1205,17 +1380,11 @@ local function spawnVerifiedFollowerAvatar(event)
                 task.wait(math.random(6, 11))
                 if not character or not character.Parent then break end
 
-                -- Stop dancing briefly to walk to a new spot in the roam area
-                local animator = humanoid:FindFirstChildOfClass("Animator")
-                if animator then
-                    for _, tr in ipairs(animator:GetPlayingAnimationTracks()) do
-                        tr:Stop(0.2)
-                    end
-                end
-
                 local newSpot = getRandomRoamPosition()
+                playWalkAnimation(character)
                 humanoid:MoveTo(newSpot)
                 humanoid.MoveToFinished:Wait()
+                stopWalkAnimation(character)
 
                 if character and character.Parent then
                     local currentPos = character:GetPivot().Position
@@ -1307,6 +1476,133 @@ local function triggerRoseGiftEffect(event)
 end
 
 -- ============================================================================
+-- Handle Panda Gift: Summon or Enlarge Current Avatar for 30s + 10s POV!
+-- ============================================================================
+local function triggerPandaGiftEffect(event)
+    local tiktokUniqueId = event.tiktokUniqueId or "gifter"
+    local robloxUserId = tonumber(event.robloxUserId)
+    local robloxUsername = event.robloxUsername or tiktokUniqueId
+    local giftName = event.giftName or "Panda"
+    local key = string.lower(tiktokUniqueId)
+
+    local targetCharacter = activeAvatarsByTikTok[key]
+
+    -- If their avatar isn't currently spawned, summon it right now!
+    if (not targetCharacter or not targetCharacter.Parent) then
+        if not robloxUserId then
+            pcall(function()
+                robloxUserId = Players:GetUserIdFromNameAsync(robloxUsername)
+            end)
+        end
+        if not robloxUserId then
+            robloxUserId = 1
+        end
+
+        local ok, newChar = pcall(function()
+            return Players:CreateHumanoidModelFromUserId(robloxUserId)
+        end)
+
+        if ok and newChar then
+            newChar.Name = robloxUsername
+            local hum = newChar:FindFirstChildOfClass("Humanoid")
+            if hum then
+                hum.DisplayDistanceType = Enum.HumanoidDisplayDistanceType.None
+                hum.Running:Connect(function(speed)
+                    if not newChar or not newChar.Parent then return end
+                    if speed > 1.0 then
+                        local isAlreadyWalking = false
+                        local anim = hum:FindFirstChildOfClass("Animator")
+                        if anim then
+                            for _, tr in ipairs(anim:GetPlayingAnimationTracks()) do
+                                if tr.Priority == Enum.AnimationPriority.Action4 then
+                                    isAlreadyWalking = true
+                                    break
+                                end
+                            end
+                        end
+                        if not isAlreadyWalking then
+                            playWalkAnimation(newChar)
+                        end
+                    elseif speed <= 0.5 then
+                        stopWalkAnimation(newChar)
+                    end
+                end)
+            end
+
+            local stagePos = STAGE_POSITION + Vector3.new(0, 4.0, 0)
+            newChar:PivotTo(CFrame.lookAt(stagePos, stagePos + Vector3.new(0, 0, 20)))
+            newChar.Parent = avatarsFolder
+            activeAvatarsByTikTok[key] = newChar
+            table.insert(crowdQueue, newChar)
+            enforceMaxAvatars()
+            targetCharacter = newChar
+        end
+    end
+
+    -- Fallback: If still no avatar, pick latest crowd avatar
+    if (not targetCharacter or not targetCharacter.Parent) and #crowdQueue > 0 then
+        targetCharacter = crowdQueue[#crowdQueue]
+    end
+
+    if not targetCharacter or not targetCharacter.Parent then
+        remoteEvent:FireAllClients("ShowBannerAlert", {
+            alertType = "panda_gift",
+            tiktokUniqueId = tiktokUniqueId,
+            robloxUsername = robloxUsername,
+            giftName = giftName
+        })
+        return
+    end
+
+    -- Enlarge current avatar to Giant Titan size (3.0x scale) for 30 seconds!
+    pcall(function()
+        targetCharacter:ScaleTo(PANDA_GIANT_SCALE)
+    end)
+
+    -- Upgrade overhead nametag to Giant Panda VIP style
+    attachNametag(targetCharacter, tiktokUniqueId, targetCharacter.Name, "panda")
+
+    -- Apply glowing emerald/gold titan aura & particles for 30 seconds
+    applyPandaGiftEffects(targetCharacter, PANDA_GIANT_DURATION)
+
+    -- Play energetic celebration dance & jump
+    playAvatarAnimation(targetCharacter, VIP_ROSE_DANCE_ANIMS)
+    local hum = targetCharacter:FindFirstChildOfClass("Humanoid")
+    if hum then hum.Jump = true end
+
+    -- Safe revert after 30 seconds
+    avatarGiantToken[targetCharacter] = (avatarGiantToken[targetCharacter] or 0) + 1
+    local currentToken = avatarGiantToken[targetCharacter]
+
+    task.delay(PANDA_GIANT_DURATION, function()
+        if avatarGiantToken[targetCharacter] == currentToken and targetCharacter and targetCharacter.Parent then
+            print("[TikTokShow] 🐼 30s Giant duration finished for " .. targetCharacter.Name .. ", restoring scale to " .. currentAvatarScale .. "x")
+            avatarGiantToken[targetCharacter] = nil
+            pcall(function()
+                targetCharacter:ScaleTo(currentAvatarScale)
+            end)
+            attachNametag(targetCharacter, tiktokUniqueId, targetCharacter.Name, false)
+        end
+    end)
+
+    -- Direct camera POV to this giant avatar for 10.0 seconds!
+    currentServerTrackedAvatar = targetCharacter
+    isServerRoseVIP = true
+    serverRoseStartTime = os.clock()
+    task.delay(PANDA_POV_DURATION, function()
+        isServerRoseVIP = false
+    end)
+
+    remoteEvent:FireAllClients("FocusAvatarPOV", {
+        targetModel = targetCharacter,
+        tiktokUniqueId = tiktokUniqueId,
+        robloxUsername = targetCharacter.Name,
+        giftName = "Panda",
+        duration = PANDA_POV_DURATION
+    })
+end
+
+-- ============================================================================
 -- Poll Node.js Local Bridge Server (http://localhost:3000/api/events)
 -- ============================================================================
 print("================================================================")
@@ -1333,6 +1629,10 @@ task.spawn(function()
                     elseif event.type == "rose_gift" then
                         task.spawn(function()
                             triggerRoseGiftEffect(event)
+                        end)
+                    elseif event.type == "panda_gift" then
+                        task.spawn(function()
+                            triggerPandaGiftEffect(event)
                         end)
                     elseif event.type == "not_following" then
                         remoteEvent:FireAllClients("ShowBannerAlert", {
@@ -1369,63 +1669,68 @@ task.spawn(function()
                             tiktokUniqueId = event.tiktokUniqueId,
                             giftName = event.giftName or "Finger Heart"
                         })
+                    elseif event.type == "set_camera_scene" then
+                        print("[TikTokShow] 🎥 Camera Scene switched to: " .. tostring(event.scene))
+                        remoteEvent:FireAllClients("SetCameraScene", { scene = event.scene })
                     elseif event.type == "update_dance_config" then
-                        print("[TikTokShow] 💃 Received update_dance_config from web controller!")
-                        if event.avatarScale and tonumber(event.avatarScale) then
-                            currentAvatarScale = tonumber(event.avatarScale)
-                            print("[TikTokShow] 📏 Updated avatar scale to: " .. currentAvatarScale .. "x")
-                            local spawnedFolder = workspace:FindFirstChild("SpawnedTikTokAvatars")
-                            if spawnedFolder then
-                                for _, char in ipairs(spawnedFolder:GetChildren()) do
-                                    if char:IsA("Model") then
-                                        pcall(function()
-                                            char:ScaleTo(currentAvatarScale)
-                                        end)
+                        task.spawn(function()
+                            print("[TikTokShow] 💃 Received update_dance_config from web controller!")
+                            if event.avatarScale and tonumber(event.avatarScale) then
+                                currentAvatarScale = tonumber(event.avatarScale)
+                                print("[TikTokShow] 📏 Updated avatar scale to: " .. currentAvatarScale .. "x")
+                                local spawnedFolder = workspace:FindFirstChild("SpawnedTikTokAvatars")
+                                if spawnedFolder then
+                                    for _, char in ipairs(spawnedFolder:GetChildren()) do
+                                        if char:IsA("Model") and not avatarGiantToken[char] then
+                                            pcall(function()
+                                                char:ScaleTo(currentAvatarScale)
+                                            end)
+                                        end
                                     end
                                 end
                             end
-                        end
-                        if type(event.stageDances) == "table" and #event.stageDances > 0 then
-                            local resolved = {}
-                            for _, id in ipairs(event.stageDances) do
-                                table.insert(resolved, resolvePlayableAnimationId(id))
+                            if type(event.stageDances) == "table" and #event.stageDances > 0 then
+                                local resolved = {}
+                                for _, id in ipairs(event.stageDances) do
+                                    table.insert(resolved, resolvePlayableAnimationId(id))
+                                end
+                                STAGE_DANCE_ANIMS = resolved
+                                print("[TikTokShow] Updated STAGE_DANCE_ANIMS (" .. #STAGE_DANCE_ANIMS .. " dances)")
                             end
-                            STAGE_DANCE_ANIMS = resolved
-                            print("[TikTokShow] Updated STAGE_DANCE_ANIMS (" .. #STAGE_DANCE_ANIMS .. " dances)")
-                        end
-                        if type(event.crowdDances) == "table" and #event.crowdDances > 0 then
-                            local resolved = {}
-                            for _, id in ipairs(event.crowdDances) do
-                                table.insert(resolved, resolvePlayableAnimationId(id))
+                            if type(event.crowdDances) == "table" and #event.crowdDances > 0 then
+                                local resolved = {}
+                                for _, id in ipairs(event.crowdDances) do
+                                    table.insert(resolved, resolvePlayableAnimationId(id))
+                                end
+                                CROWD_DANCE_ANIMS = resolved
+                                print("[TikTokShow] Updated CROWD_DANCE_ANIMS (" .. #CROWD_DANCE_ANIMS .. " dances)")
                             end
-                            CROWD_DANCE_ANIMS = resolved
-                            print("[TikTokShow] Updated CROWD_DANCE_ANIMS (" .. #CROWD_DANCE_ANIMS .. " dances)")
-                        end
-                        if type(event.vipDances) == "table" and #event.vipDances > 0 then
-                            local resolved = {}
-                            for _, id in ipairs(event.vipDances) do
-                                table.insert(resolved, resolvePlayableAnimationId(id))
+                            if type(event.vipDances) == "table" and #event.vipDances > 0 then
+                                local resolved = {}
+                                for _, id in ipairs(event.vipDances) do
+                                    table.insert(resolved, resolvePlayableAnimationId(id))
+                                end
+                                VIP_ROSE_DANCE_ANIMS = resolved
+                                print("[TikTokShow] Updated VIP_ROSE_DANCE_ANIMS (" .. #VIP_ROSE_DANCE_ANIMS .. " dances)")
                             end
-                            VIP_ROSE_DANCE_ANIMS = resolved
-                            print("[TikTokShow] Updated VIP_ROSE_DANCE_ANIMS (" .. #VIP_ROSE_DANCE_ANIMS .. " dances)")
-                        end
 
-                        if event.forceDanceId and tostring(event.forceDanceId) ~= "" then
-                            local forceId = tostring(event.forceDanceId)
-                            print("[TikTokShow] 💥 Forcing all active avatars to dance: " .. forceId)
-                            local playableForceId = resolvePlayableAnimationId(forceId)
-                            CROWD_DANCE_ANIMS = { playableForceId }
-                            local spawnedFolder = workspace:FindFirstChild("SpawnedTikTokAvatars")
-                            if spawnedFolder then
-                                for _, char in ipairs(spawnedFolder:GetChildren()) do
-                                    if char:IsA("Model") and char:FindFirstChildOfClass("Humanoid") then
-                                        task.spawn(function()
-                                            playAvatarAnimation(char, playableForceId)
-                                        end)
+                            if event.forceDanceId and tostring(event.forceDanceId) ~= "" then
+                                local forceId = tostring(event.forceDanceId)
+                                print("[TikTokShow] 💥 Forcing all active avatars to dance: " .. forceId)
+                                local playableForceId = resolvePlayableAnimationId(forceId)
+                                CROWD_DANCE_ANIMS = { playableForceId }
+                                local spawnedFolder = workspace:FindFirstChild("SpawnedTikTokAvatars")
+                                if spawnedFolder then
+                                    for _, char in ipairs(spawnedFolder:GetChildren()) do
+                                        if char:IsA("Model") and char:FindFirstChildOfClass("Humanoid") then
+                                            task.spawn(function()
+                                                playAvatarAnimation(char, playableForceId)
+                                            end)
+                                        end
                                     end
                                 end
                             end
-                        end
+                        end)
                     end
                 end
             end

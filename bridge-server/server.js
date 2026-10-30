@@ -357,6 +357,40 @@ async function handleGiftEvent(data) {
     return;
   }
 
+  // 3. Check for "Panda" gift event (Summons or Enlarges avatar to Giant size for 30s + 10s POV)
+  const isPanda = giftNameLower.includes("panda");
+  if (isPanda) {
+    markAsFollower(tiktokUniqueId);
+
+    const key = tiktokUniqueId.toLowerCase();
+    let mapping = userMappings[key];
+
+    if (!mapping) {
+      const fallbackProfile = await resolveRobloxUsername(tiktokUniqueId);
+      if (fallbackProfile) {
+        saveUserMapping(tiktokUniqueId, tiktokNickname, fallbackProfile);
+        mapping = userMappings[key];
+      }
+    }
+
+    addLog(
+      "gift_panda",
+      `🐼 @${tiktokUniqueId} sent Panda Gift! Summoning/Enlarging Giant Avatar for 30s (10s POV)!`
+    );
+
+    enqueueRobloxEvent({
+      type: "panda_gift",
+      tiktokUniqueId,
+      tiktokNickname,
+      robloxUserId: mapping ? mapping.robloxUserId : null,
+      robloxUsername: mapping ? mapping.robloxUsername : tiktokUniqueId,
+      robloxDisplayName: mapping ? mapping.robloxDisplayName : tiktokNickname,
+      giftName: "Panda",
+      repeatCount
+    });
+    return;
+  }
+
   // Check if the gift is a Rose (giftId 5655 is standard TikTok Rose, or name includes "rose") or any gift
   const isRose =
     giftId === 5655 ||
@@ -627,6 +661,23 @@ app.post("/api/dance_config", (req, res) => {
   });
 });
 
+// 2c. Camera Scene Switcher Endpoint (Auto-Cycle, Drone, Paparazzi, Pull-In)
+let activeCameraScene = "auto";
+app.get("/api/camera_scene", (req, res) => {
+  res.json({ ok: true, scene: activeCameraScene });
+});
+
+app.post("/api/camera_scene", (req, res) => {
+  const { scene } = req.body || {};
+  activeCameraScene = scene || "auto";
+  enqueueRobloxEvent({
+    type: "set_camera_scene",
+    scene: activeCameraScene
+  });
+  addLog("camera", `🎥 [CAMERA DIRECTOR] Switched camera mode to: ${activeCameraScene.toUpperCase()}`);
+  res.json({ ok: true, scene: activeCameraScene });
+});
+
 // 3. Connect/Switch TikTok Live account at runtime
 app.post("/api/connect", async (req, res) => {
   const { username, bypass, apiKey } = req.body || {};
@@ -702,6 +753,29 @@ app.post("/api/simulate", async (req, res) => {
       robloxUserId: mapping ? mapping.robloxUserId : null,
       robloxUsername: mapping ? mapping.robloxUsername : null,
       robloxDisplayName: mapping ? mapping.robloxDisplayName : null
+    });
+    return res.json({ ok: true, mapping });
+  }
+
+  if (action === "panda_gift") {
+    let profile = null;
+    if (cleanRoblox) {
+      profile = await resolveRobloxUsername(cleanRoblox);
+      if (profile) {
+        saveUserMapping(cleanTikTok, cleanTikTok, profile);
+      }
+    }
+    const mapping = userMappings[cleanTikTok.toLowerCase()];
+    addLog("simulate", `🧪 [TEST] Simulated 🐼 Panda Gift from @${cleanTikTok} (${mapping?.robloxUsername || cleanRoblox || "stage avatar"})! Giant Avatar 30s + POV 10s!`);
+    enqueueRobloxEvent({
+      type: "panda_gift",
+      tiktokUniqueId: cleanTikTok,
+      tiktokNickname: cleanTikTok,
+      giftName: "Panda",
+      repeatCount: 1,
+      robloxUserId: mapping ? mapping.robloxUserId : (profile ? profile.userId : null),
+      robloxUsername: mapping ? mapping.robloxUsername : (profile ? profile.username : cleanRoblox),
+      robloxDisplayName: mapping ? mapping.robloxDisplayName : (profile ? profile.displayName : cleanTikTok)
     });
     return res.json({ ok: true, mapping });
   }

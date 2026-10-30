@@ -202,13 +202,33 @@
         <button class="btn-primary" style="background:linear-gradient(135deg, #06b6d4, #3b82f6);" onclick="simulate('finger_heart_dolphin')">🐬 Send Finger Heart (5 Leaping Dolphins 15s)</button>
         <button class="btn-primary" style="background:linear-gradient(135deg, #0ea5e9, #1d4ed8);font-weight:700;" onclick="simulate('potato_tsunami')">🥔 Send Potato (15s Giant Tsunami Wave)</button>
       </div>
-      <div style="margin-top:12px;padding-top:10px;border-top:1px solid var(--border);display:flex;align-items:center;justify-content:space-between;flex-wrap:wrap;gap:8px;">
-        <span style="font-size:12px;color:var(--muted);">
-          🎲 <strong>Auto Random Gift (Every 7s):</strong> <em>Rose</em> (~28.3%), <em>3 Dragons</em> (~28.3%), <em>5 Dolphins</em> (~28.3%), <em>Panda Gigantic</em> (<strong>15%</strong>)
-        </span>
-        <button id="btnAutoRandomGift" class="btn-success" style="padding:6px 14px;font-size:12px;" onclick="toggleAutoRandomGift()">
-          🎲 Auto 7s Gift: ON
-        </button>
+      <div style="margin-top:12px;padding-top:12px;border-top:1px solid var(--border);display:flex;align-items:center;justify-content:space-between;flex-wrap:wrap;gap:12px;">
+        <div style="flex:1;min-width:220px;">
+          <div style="font-size:13px;font-weight:600;color:var(--text);margin-bottom:3px;">
+            🎲 Auto Random Gift Interval: <span id="autoGiftIntervalDisplay" style="color:var(--cyan);font-weight:700;">7s</span>
+          </div>
+          <div style="font-size:11px;color:var(--muted);">
+            <em>Rose</em> (~28.3%), <em>3 Dragons</em> (~28.3%), <em>5 Dolphins</em> (~28.3%), <em>Panda Gigantic</em> (<strong>15%</strong>)
+          </div>
+        </div>
+        <div style="display:flex;align-items:center;gap:10px;flex-wrap:wrap;">
+          <span style="font-size:11px;color:var(--muted);">1s</span>
+          <input
+            type="range"
+            id="autoGiftIntervalSlider"
+            min="1"
+            max="30"
+            step="1"
+            value="7"
+            style="width:150px;cursor:pointer;"
+            oninput="updateAutoGiftIntervalDisplay(this.value)"
+            onchange="applyAutoGiftInterval(this.value)"
+          />
+          <span style="font-size:11px;color:var(--muted);">30s</span>
+          <button id="btnAutoRandomGift" class="btn-success" style="padding:6px 14px;font-size:12px;" onclick="toggleAutoRandomGift()">
+            🎲 Auto Gift (7s): ON
+          </button>
+        </div>
       </div>
     </div>
   </div>
@@ -631,21 +651,53 @@
     }
 
     let isAutoRandomGiftOn = true;
+    let currentAutoGiftInterval = 7;
+
     async function loadAutoRandomGiftStatus() {
       try {
         const res = await fetch("/api/auto_random_gift");
         const data = await res.json();
         if (data.ok) {
           isAutoRandomGiftOn = Boolean(data.enabled);
+          if (data.intervalSeconds) {
+            currentAutoGiftInterval = Number(data.intervalSeconds);
+            const slider = document.getElementById("autoGiftIntervalSlider");
+            if (slider) slider.value = currentAutoGiftInterval;
+            updateAutoGiftIntervalDisplay(currentAutoGiftInterval);
+          }
           updateAutoRandomGiftBtn();
         }
+      } catch (_) {}
+    }
+
+    function updateAutoGiftIntervalDisplay(val) {
+      currentAutoGiftInterval = Math.max(1, Math.min(30, Math.round(Number(val) || 7)));
+      const disp = document.getElementById("autoGiftIntervalDisplay");
+      if (disp) disp.textContent = currentAutoGiftInterval + "s";
+      updateAutoRandomGiftBtn();
+    }
+
+    async function applyAutoGiftInterval(val) {
+      updateAutoGiftIntervalDisplay(val);
+      try {
+        await fetch("/api/auto_random_gift", {
+          method: "POST",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({
+            enabled: isAutoRandomGiftOn,
+            intervalSeconds: currentAutoGiftInterval
+          })
+        });
+        refreshStatus();
       } catch (_) {}
     }
 
     function updateAutoRandomGiftBtn() {
       const btn = document.getElementById("btnAutoRandomGift");
       if (!btn) return;
-      btn.textContent = isAutoRandomGiftOn ? "🎲 Auto 7s Gift: ON" : "⏸️ Auto 7s Gift: OFF";
+      btn.textContent = isAutoRandomGiftOn
+        ? `🎲 Auto Gift (${currentAutoGiftInterval}s): ON`
+        : `⏸️ Auto Gift (${currentAutoGiftInterval}s): OFF`;
       btn.className = isAutoRandomGiftOn ? "btn-success" : "btn-outline";
     }
 
@@ -656,7 +708,10 @@
         await fetch("/api/auto_random_gift", {
           method: "POST",
           headers: { "Content-Type": "application/json" },
-          body: JSON.stringify({ enabled: isAutoRandomGiftOn })
+          body: JSON.stringify({
+            enabled: isAutoRandomGiftOn,
+            intervalSeconds: currentAutoGiftInterval
+          })
         });
         refreshStatus();
       } catch (_) {}

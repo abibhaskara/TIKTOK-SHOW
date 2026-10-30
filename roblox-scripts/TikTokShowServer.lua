@@ -1708,7 +1708,7 @@ end
 --   3. 🧙‍♂️ / 🎩 Send Topi Penyihir / Hat and Mustache (3 Dragons 20s Event)
 --   4. 🐬 Send Finger Heart (5 Leaping Dolphins 15s Event)
 -- ============================================================================
-local AUTO_RANDOM_GIFT_INTERVAL = 7.0
+local autoRandomGiftInterval = 7.0
 local autoRandomGiftEnabled = true
 
 local function getActiveSpawnedAvatars()
@@ -1725,7 +1725,13 @@ end
 
 task.spawn(function()
     while true do
-        task.wait(AUTO_RANDOM_GIFT_INTERVAL)
+        local elapsedWait = 0
+        while elapsedWait < autoRandomGiftInterval do
+            task.wait(0.2)
+            if autoRandomGiftEnabled then
+                elapsedWait += 0.2
+            end
+        end
         if autoRandomGiftEnabled then
             local activeAvatars = getActiveSpawnedAvatars()
             local chosenAva = nil
@@ -1925,8 +1931,13 @@ task.spawn(function()
                         print("[TikTokShow] 🎥 Camera Scene switched to: " .. tostring(event.scene))
                         remoteEvent:FireAllClients("SetCameraScene", { scene = event.scene })
                     elseif event.type == "set_auto_random_gift" then
-                        autoRandomGiftEnabled = (event.enabled ~= false)
-                        print("[TikTokShow] 🎲 Auto 7s Random Gift set to: " .. tostring(autoRandomGiftEnabled))
+                        if event.enabled ~= nil then
+                            autoRandomGiftEnabled = (event.enabled ~= false)
+                        end
+                        if event.intervalSeconds and tonumber(event.intervalSeconds) then
+                            autoRandomGiftInterval = math.clamp(tonumber(event.intervalSeconds), 1, 30)
+                        end
+                        print(string.format("[TikTokShow] 🎲 Auto Random Gift: %s (Interval: %ds)", tostring(autoRandomGiftEnabled), autoRandomGiftInterval))
                     elseif event.type == "update_bridge_url" and event.publicBridgeUrl then
                         workspace:SetAttribute("PublicBridgeUrl", tostring(event.publicBridgeUrl))
                         PUBLIC_BRIDGE_URL = tostring(event.publicBridgeUrl)

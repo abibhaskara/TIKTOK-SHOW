@@ -690,23 +690,30 @@ app.post("/api/dance_config", (req, res) => {
 // 2c. Camera Scene Switcher Endpoint (Auto-Cycle, Drone, Paparazzi, Pull-In)
 let activeCameraScene = "auto";
 let autoRandomGiftEnabled = true;
+let autoRandomGiftInterval = 7;
 
 app.get("/api/auto_random_gift", (req, res) => {
-  res.json({ ok: true, enabled: autoRandomGiftEnabled, intervalSeconds: 7 });
+  res.json({ ok: true, enabled: autoRandomGiftEnabled, intervalSeconds: autoRandomGiftInterval });
 });
 
 app.post("/api/auto_random_gift", (req, res) => {
-  const { enabled } = req.body || {};
-  autoRandomGiftEnabled = Boolean(enabled);
+  const { enabled, intervalSeconds } = req.body || {};
+  if (typeof enabled === "boolean") {
+    autoRandomGiftEnabled = enabled;
+  }
+  if (intervalSeconds !== undefined && !isNaN(Number(intervalSeconds))) {
+    autoRandomGiftInterval = Math.max(1, Math.min(30, Math.round(Number(intervalSeconds))));
+  }
   enqueueRobloxEvent({
     type: "set_auto_random_gift",
-    enabled: autoRandomGiftEnabled
+    enabled: autoRandomGiftEnabled,
+    intervalSeconds: autoRandomGiftInterval
   });
   addLog(
     "simulate",
-    `🎲 [AUTO 7s GIFT] ${autoRandomGiftEnabled ? "ENABLED" : "PAUSED"} random 7s gift loop (Rose / Panda / 3 Dragons)`
+    `🎲 [AUTO GIFT] ${autoRandomGiftEnabled ? "ENABLED" : "PAUSED"} random gift loop (Every ${autoRandomGiftInterval}s | Rose / Panda 15% / 3 Dragons / 5 Dolphins)`
   );
-  res.json({ ok: true, enabled: autoRandomGiftEnabled });
+  res.json({ ok: true, enabled: autoRandomGiftEnabled, intervalSeconds: autoRandomGiftInterval });
 });
 
 app.get("/api/camera_scene", (req, res) => {

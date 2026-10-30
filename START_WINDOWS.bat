@@ -10,3 +10,4 @@ if not exist "node_modules" (
 start "" "http://localhost:3000"
 node server.js
 pause
+

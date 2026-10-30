@@ -9,3 +9,4 @@ if [ ! -d "node_modules" ]; then
 fi
 (sleep 2 && open "http://localhost:3000") &
 node server.js
+
